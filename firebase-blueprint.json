@@ -1,0 +1,115 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Storage for user profiles and roles",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "tutor", "student"] },
+        "phone": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Educational courses offered by the tutoring center",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "tutorId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "tutorId"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "Individual tutoring sessions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseId": { "type": "string" },
+        "tutorId": { "type": "string" },
+        "startTime": { "type": "string", "format": "date-time" },
+        "endTime": { "type": "string", "format": "date-time" },
+        "studentIds": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" }
+      },
+      "required": ["courseId", "tutorId", "startTime", "endTime"]
+    },
+    "Enrollment": {
+      "title": "Enrollment",
+      "description": "Links students to courses",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "enrolledAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "courseId"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Course-wide announcements",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "courseId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "authorId", "content"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Transaction records for student payments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "amount": { "type": "number" },
+        "amountPaid": { "type": "number" },
+        "status": { "type": "string", "enum": ["paid", "partial", "pending", "overdue"] },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "paidAt": { "type": "string", "format": "date-time" },
+        "method": { "type": "string" },
+        "reference": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["studentId", "amount", "status"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "courses": {
+      "schema": "Course",
+      "description": "Tutoring courses"
+    },
+    "sessions": {
+      "schema": "Session",
+      "description": "Tutoring sessions schedule"
+    },
+    "enrollments": {
+      "schema": "Enrollment",
+      "description": "Course enrollments"
+    },
+    "announcements": {
+      "schema": "Announcement",
+      "description": "Updates for students"
+    },
+    "payments": {
+      "schema": "Payment",
+      "description": "Financial records"
+    }
+  }
+}
