@@ -1,62 +1,64 @@
-export type UserRole = 'admin' | 'tutor' | 'student';
+export type UserRole = 'admin' | 'teacher' | 'student';
 
 export interface UserProfile {
   uid: string;
   email: string;
-  name?: string;
+  name: string;
   phone?: string;
   role: UserRole;
   photoURL?: string;
   createdAt: any;
+  // Student specific fields
+  courseEnrolled?: string;
+  enrollmentDate?: any;
+  paymentStatus?: 'paid' | 'partial' | 'unpaid';
+  progress?: number; // 0-100
 }
 
 export interface Course {
   id: string;
   title: string;
   description: string;
-  tutorId: string;
-  tutorName?: string;
+  teacherId: string;
+  teacherName?: string;
   createdAt: any;
+  modules?: Module[];
 }
 
-export interface TutoringSession {
+export interface Module {
   id: string;
-  courseId: string;
-  courseTitle?: string;
-  tutorId: string;
-  startTime: any;
-  endTime: any;
-  studentIds: string[];
-  notes?: string;
+  title: string;
+  lessons: Lesson[];
 }
 
-export interface Announcement {
+export interface Lesson {
   id: string;
-  courseId: string;
-  authorId: string;
-  authorName?: string;
-  content: string;
-  createdAt: any;
+  title: string;
+  content: string; // Markdown or HTML
+  materials?: string[]; // URLs to materials
+  completedBy?: string[]; // Array of student UIDs
 }
 
-export interface Enrollment {
+export interface PaymentRecord {
   id: string;
   studentId: string;
+  studentName: string;
   courseId: string;
-  enrolledAt: any;
-}
-
-export interface Payment {
-  id: string;
-  studentId: string;
-  studentName?: string;
-  courseId?: string;
-  amount: number;
+  courseName: string;
   amountPaid: number;
-  status: 'paid' | 'partial' | 'pending' | 'overdue';
-  dueDate: any;
-  paidAt?: any;
-  method?: string;
-  reference?: string;
-  description: string;
+  totalAmount: number;
+  balanceRemaining: number;
+  paymentDate: any;
+  paymentMethod: string;
+  referenceNumber: string;
+  status: 'paid' | 'partial' | 'unpaid';
+}
+
+export interface FinancialReport {
+  totalStudents: number;
+  paidStudents: number;
+  unpaidStudents: number;
+  totalAmountExpected: number;
+  totalAmountReceived: number;
+  outstandingBalance: number;
 }

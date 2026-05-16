@@ -1,8 +1,7 @@
-import { BookOpen, Calendar, Home, LogOut, Users, Bell, Search, CheckCircle, DollarSign } from 'lucide-react';
+import { BookOpen, Home, LogOut, Users, Bell, DollarSign, BarChart2 } from 'lucide-react';
 import { Button } from '../ui/Card';
 import { logout } from '../../lib/firebase';
 import { useAuth } from '../../hooks/useAuth';
-import { motion } from 'motion/react';
 import { cn } from '../../lib/utils';
 
 export function Sidebar({ 
@@ -19,13 +18,12 @@ export function Sidebar({
   const { profile } = useAuth();
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home, roles: ['admin', 'tutor', 'student'] },
-    { id: 'courses', label: 'Courses', icon: BookOpen, roles: ['admin', 'tutor', 'student'] },
-    { id: 'assessments', label: 'Assessments', icon: CheckCircle, roles: ['admin', 'tutor', 'student'] },
-    { id: 'sessions', label: 'Sessions', icon: Calendar, roles: ['admin', 'tutor', 'student'] },
-    { id: 'students', label: 'Students', icon: Users, roles: ['admin', 'tutor'] },
-    { id: 'announcements', label: 'Announcements', icon: Bell, roles: ['admin', 'tutor', 'student'] },
-    { id: 'financials', label: 'Financials', icon: DollarSign, roles: ['admin', 'tutor'] },
+    { id: 'dashboard', label: 'Dashboard', icon: Home, roles: ['admin', 'teacher', 'student'] },
+    { id: 'courses', label: 'Courses', icon: BookOpen, roles: ['admin', 'teacher', 'student'] },
+    { id: 'students', label: 'Students', icon: Users, roles: ['admin', 'teacher'] },
+    { id: 'financials', label: 'Financials', icon: DollarSign, roles: ['admin'] },
+    { id: 'reports', label: 'Reports', icon: BarChart2, roles: ['admin', 'teacher'] },
+    { id: 'announcements', label: 'Announcements', icon: Bell, roles: ['admin', 'teacher', 'student'] },
   ];
 
   const filteredMenu = menuItems.filter(item => 
@@ -50,7 +48,7 @@ export function Sidebar({
           <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
             <BookOpen className="text-white w-5 h-5" />
           </div>
-          <span className="font-bold text-xl tracking-tight">TutorTrack</span>
+          <span className="font-bold text-xl tracking-tight">LearnFlow</span>
         </div>
 
         <nav className="space-y-1">

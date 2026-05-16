@@ -10,7 +10,6 @@ import { Assessment } from './components/Assessment';
 import { Financials } from './components/Financials';
 import { StudentManagement } from './components/StudentManagement';
 import { Reports } from './components/Reports';
-import { GeminiAssistant } from './components/GeminiAssistant';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, X } from 'lucide-react';
 import { Button } from './components/ui/Card';
@@ -42,18 +41,14 @@ export default function App() {
         return <Dashboard />;
       case 'courses':
         return <CourseList />;
-      case 'assessments':
-        return <Assessment />;
-      case 'announcements':
-        return <Announcements />;
       case 'financials':
         return <Financials />;
-      case 'sessions':
-        return <Sessions />;
       case 'students':
         return <StudentManagement />;
       case 'reports':
         return <Reports />;
+      case 'announcements':
+        return <Announcements />;
       default:
         return (
           <div className="p-8 flex items-center justify-center min-h-[50vh]">
@@ -75,7 +70,7 @@ export default function App() {
             <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
               <Menu className="text-white w-4 h-4" />
             </div>
-            <span className="font-bold tracking-tight">TutorTrack</span>
+            <span className="font-bold tracking-tight">LearnFlow</span>
           </div>
           <Button variant="ghost" onClick={() => setIsSidebarOpen(true)} className="p-2">
             <Menu className="w-6 h-6 text-black" />
@@ -88,12 +83,12 @@ export default function App() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
+            className="min-h-screen"
           >
             {renderContent()}
           </motion.div>
         </AnimatePresence>
       </main>
-      <GeminiAssistant />
     </div>
   );
 }

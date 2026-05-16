@@ -64,7 +64,7 @@ export function Announcements() {
         </div>
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Announcements</h1>
-          <p className="text-gray-500 font-medium">Stay updated with the latest news from TutorTrack.</p>
+          <p className="text-gray-500 font-medium">Stay updated with the latest news from LearnFlow.</p>
         </div>
       </div>
 
