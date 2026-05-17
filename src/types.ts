@@ -10,6 +10,8 @@ export interface UserProfile {
   createdAt: any;
   // Student specific fields
   courseEnrolled?: string;
+  enrolledCourses?: string[];
+  completedLessons?: string[];
   enrollmentDate?: any;
   paymentStatus?: 'paid' | 'partial' | 'unpaid';
   progress?: number; // 0-100

@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react';
-import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { useAuth } from '../../hooks/useAuth';
 import { Course, Module, Lesson } from '../../types';
 import { Button } from '../ui/Card';
 import { Plus, ChevronDown, ChevronUp, FileText, Trash2, Edit } from 'lucide-react';
@@ -14,9 +15,21 @@ interface CourseDetailProps {
 }
 
 export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailProps) {
+  const { profile } = useAuth();
   const [showModuleForm, setShowModuleForm] = useState(false);
   const [newModuleTitle, setNewModuleTitle] = useState('');
   const [expandedModules, setExpandedModules] = useState<string[]>([]);
+
+  const handleToggleLesson = async (lessonId: string, isCompleted: boolean) => {
+    if (!profile) return;
+    try {
+      await updateDoc(doc(db, 'users', profile.uid), {
+        completedLessons: isCompleted ? arrayRemove(lessonId) : arrayUnion(lessonId)
+      });
+    } catch (err) {
+      console.error("Failed to toggle lesson completion:", err);
+    }
+  };
   
   const [showLessonForm, setShowLessonForm] = useState<string | null>(null);
   const [newLessonTitle, setNewLessonTitle] = useState('');
@@ -138,8 +151,15 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
                             </div>
                             <div className="flex items-center gap-3">
                               {role === 'student' ? (
-                                <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-bold text-gray-400 hover:text-black transition-colors">
-                                  Mark Complete
+                                <button 
+                                  onClick={() => handleToggleLesson(lesson.id, profile?.completedLessons?.includes(lesson.id) || false)}
+                                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                                    profile?.completedLessons?.includes(lesson.id)
+                                      ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100/70'
+                                      : 'border-gray-200 text-gray-400 hover:text-black'
+                                  }`}
+                                >
+                                  {profile?.completedLessons?.includes(lesson.id) ? '✓ Completed' : 'Mark Complete'}
                                 </button>
                               ) : (
                                 <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">

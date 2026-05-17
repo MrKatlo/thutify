@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
-import { collection, query, getDocs, addDoc, serverTimestamp, orderBy, deleteDoc, doc, updateDoc, QueryDocumentSnapshot } from 'firebase/firestore';
+import { collection, query, getDocs, addDoc, serverTimestamp, orderBy, deleteDoc, doc, updateDoc, QueryDocumentSnapshot, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { Course } from '../../types';
@@ -104,6 +104,17 @@ export function CourseList() {
     }
   };
 
+  const handleEnrollment = async (courseId: string, action: 'enroll' | 'drop') => {
+    if (!profile) return;
+    try {
+      await updateDoc(doc(db, 'users', profile.uid), {
+        enrolledCourses: action === 'enroll' ? arrayUnion(courseId) : arrayRemove(courseId)
+      });
+    } catch (err) {
+      console.error("Failed to update course enrollment:", err);
+    }
+  };
+
   if (viewingCourse && profile) {
     return (
       <div className="p-4 md:p-8 max-w-6xl mx-auto">
@@ -186,14 +197,45 @@ export function CourseList() {
                         </button>
                       </>
                     )}
-                    <button 
-                      onClick={() => setViewingCourse(course)}
-                      className="flex items-center gap-1 text-xs font-bold text-black hover:translate-x-1 transition-transform"
-                    >
-                      View <ChevronRight className="w-4 h-4" />
-                    </button>
+                    {profile?.role !== 'student' && (
+                      <button 
+                        onClick={() => setViewingCourse(course)}
+                        className="flex items-center gap-1 text-xs font-bold text-black hover:translate-x-1 transition-transform"
+                      >
+                        View <ChevronRight className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
+
+                {profile?.role === 'student' && (
+                  <div className="mt-4 pt-4 border-t border-gray-100 flex gap-2">
+                    {profile.enrolledCourses?.includes(course.id) ? (
+                      <>
+                        <Button 
+                          variant="outline" 
+                          onClick={() => handleEnrollment(course.id, 'drop')}
+                          className="flex-1 text-xs py-2 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                        >
+                          Drop Course
+                        </Button>
+                        <Button 
+                          onClick={() => setViewingCourse(course)}
+                          className="flex-1 text-xs py-2 bg-black text-white"
+                        >
+                          Learn
+                        </Button>
+                      </>
+                    ) : (
+                      <Button 
+                        onClick={() => handleEnrollment(course.id, 'enroll')}
+                        className="w-full text-xs py-2 bg-black text-white"
+                      >
+                        Enroll Now
+                      </Button>
+                    )}
+                  </div>
+                )}
               </Card>
             </motion.div>
           ))
