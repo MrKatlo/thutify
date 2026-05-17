@@ -40,12 +40,17 @@ export function Sidebar({
     profile?.role && item.roles.includes(profile.role)
   );
 
+  const handleRoleChange = (newRole: any) => {
+    localStorage.setItem('user_role', newRole);
+    window.location.reload();
+  };
+
   return (
     <>
       <div 
         className={cn(
-          "fixed inset-0 bg-black/20 z-40 lg:hidden transition-opacity",
-          isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+          "fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden",
+          isOpen ? "block" : "hidden"
         )}
         onClick={() => setIsOpen(false)}
       />
@@ -89,9 +94,17 @@ export function Sidebar({
             className="w-10 h-10 rounded-full border border-gray-200"
             alt="User avatar"
           />
-          <div className="overflow-hidden">
+          <div className="overflow-hidden flex-1">
             <p className="text-sm font-semibold truncate">{profile?.name || 'User'}</p>
-            <p className="text-xs text-gray-400 capitalize">{profile?.role}</p>
+            <select
+              value={profile?.role || 'admin'}
+              onChange={(e) => handleRoleChange(e.target.value)}
+              className="text-xs text-gray-500 font-bold uppercase bg-gray-50 border border-gray-200 rounded px-1 py-0.5 mt-0.5 outline-none cursor-pointer hover:bg-gray-100 hover:text-black transition-all"
+            >
+              <option value="admin">Admin</option>
+              <option value="teacher">Teacher</option>
+              <option value="student">Student</option>
+            </select>
           </div>
         </div>
         <Button 

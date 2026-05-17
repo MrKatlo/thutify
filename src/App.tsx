@@ -24,7 +24,7 @@ import { Menu, X } from 'lucide-react';
 import { Button } from './components/ui/Card';
 
 export default function App() {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, isMockMode } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -50,20 +50,22 @@ export default function App() {
         return <Dashboard />;
       case 'courses':
         return <CourseList />;
+      case 'announcements':
+        return <Announcements />;
+      case 'sessions':
+        return <Sessions />;
+      case 'assessment':
+        return <Assessment />;
       case 'financials':
         return <Financials />;
       case 'students':
         return <StudentManagement />;
-      case 'teachers':
-        return <TeacherManagement />;
       case 'reports':
         return <Reports />;
-      case 'announcements':
-        return <Announcements />;
+      case 'teachers':
+        return <TeacherManagement />;
       case 'attendance':
         return <Attendance />;
-      case 'assessment':
-        return <Assessment />;
       case 'certificates':
         return <Certificates />;
       case 'content':
@@ -91,34 +93,53 @@ export default function App() {
   };
 
   return (
-    <div className="flex min-h-screen bg-[#fafafa]">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
-      <main className="flex-1 overflow-y-auto w-full">
-        <header className="lg:hidden bg-white border-b border-gray-100 p-4 sticky top-0 z-30 flex items-center justify-between">
+    <div className="flex flex-col min-h-screen bg-[#fafafa]">
+      {isMockMode && (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-800 px-4 py-2.5 text-xs md:text-sm font-semibold flex items-center justify-between gap-4 z-50">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-              <Menu className="text-white w-4 h-4" />
-            </div>
-            <span className="font-bold tracking-tight">LearnFlow</span>
+            <span className="text-amber-500">⚠️</span>
+            <span>
+              <strong>Firestore Permission Denied</strong>. Running in local mock mode. Please copy the rules in <code>firestore.rules</code> and publish them in your **Firebase Console** under Firestore -> Rules.
+            </span>
           </div>
-          <Button variant="ghost" onClick={() => setIsSidebarOpen(true)} className="p-2">
-            <Menu className="w-6 h-6 text-black" />
-          </Button>
-        </header>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.3, ease: 'easeOut' }}
-            className="min-h-screen"
+          <button 
+            onClick={() => alert("1. Open your Firebase Console.\n2. Navigate to Firestore Database -> Rules.\n3. Copy the entire contents of your local 'firestore.rules' file.\n4. Paste them into the Firebase editor and click 'Publish'.\n\nOnce done, refresh this page and real roles will work perfectly!")}
+            className="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-1 rounded transition-all shrink-0 cursor-pointer"
           >
-            {renderContent()}
-          </motion.div>
-        </AnimatePresence>
-      </main>
+            How to fix?
+          </button>
+        </div>
+      )}
+      <div className="flex flex-1 min-h-0">
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+        <main className="flex-1 overflow-y-auto w-full flex flex-col">
+          <header className="lg:hidden bg-white border-b border-gray-100 p-4 sticky top-0 z-30 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
+                <Menu className="text-white w-4 h-4" />
+              </div>
+              <span className="font-bold tracking-tight">LearnFlow</span>
+            </div>
+            <Button variant="ghost" onClick={() => setIsSidebarOpen(true)} className="p-2">
+              <Menu className="w-6 h-6 text-black" />
+            </Button>
+          </header>
+          <div className="flex-1">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+                className="min-h-full"
+              >
+                {renderContent()}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
-

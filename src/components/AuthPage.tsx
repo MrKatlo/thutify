@@ -25,6 +25,8 @@ export function AuthPage() {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
+        // Save to localStorage immediately so useAuth fallback knows the exact chosen role
+        localStorage.setItem('user_role', role);
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
         
