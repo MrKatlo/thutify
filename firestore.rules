@@ -6,86 +6,55 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 3. Primitive Definitions
+    // Primitive Definitions
     function isSignedIn() {
       return request.auth != null;
-    }
-    
-    function isEmailVerified() {
-      return isSignedIn() && request.auth.token.email_verified == true;
     }
 
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    function getProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function incoming() {
-      return request.resource.data;
+    function isAdmin() {
+      return isSignedIn() && getProfile().role == 'admin';
     }
 
-    function existing() {
-      return resource.data;
-    }
-
-    // Entity Validations
-    function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
-             data.uid is string &&
-             data.email is string &&
-             data.role in ['admin', 'tutor', 'student'] &&
-             data.createdAt == request.time;
-    }
-
-    function isValidCourse(data) {
-      return data.keys().hasAll(['title', 'tutorId', 'createdAt']) &&
-             data.title is string && data.title.size() <= 100 &&
-             data.tutorId is string &&
-             data.createdAt == request.time;
+    function isTeacher() {
+      return isSignedIn() && getProfile().role == 'teacher';
     }
 
     // Match Blocks
     match /users/{userId} {
-      allow get: if isSignedIn() && isValidId(userId);
-      allow list: if isSignedIn(); // For tutor/admin search
-      allow create: if isOwner(userId) && isValidUser(incoming()) && isEmailVerified();
-      allow update: if isOwner(userId) && 
-                      incoming().diff(existing()).affectedKeys().hasOnly(['name', 'photoURL', 'role']); // allow tutor upgrade for demo
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); // Allow searching for students/teachers
+      allow create: if isSignedIn(); // Allow initial profile creation
+      allow update: if isSignedIn(); // Allow profile updates
+      allow delete: if isAdmin();
     }
 
     match /courses/{courseId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidCourse(incoming());
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow create: if isAdmin() || isTeacher();
+      allow update: if isAdmin() || isTeacher();
+      allow delete: if isAdmin();
     }
 
-    match /sessions/{sessionId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || isOwner(resource.data.studentId);
+      allow create: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /announcements/{announcementId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-    }
-
-    match /enrollments/{enrollmentId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow delete: if isSignedIn();
-    }
-
-    match /payments/{paymentId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isSignedIn();
+      allow create: if isAdmin() || isTeacher();
+      allow update: if isAdmin() || isTeacher();
+      allow delete: if isAdmin() || isTeacher();
     }
   }
 }
