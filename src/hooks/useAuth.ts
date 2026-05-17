@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 
 export function useAuth() {
@@ -11,55 +11,71 @@ export function useAuth() {
   const [isMockMode, setIsMockMode] = useState(false);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (firebaseUser) => {
+    let unsubscribeProfile: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
+      
+      // Clean up previous profile listener if any
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = null;
+      }
+
       if (firebaseUser) {
-        try {
-          const localRole = (localStorage.getItem('user_role') || 'admin') as UserRole;
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (userDoc.exists()) {
-            const data = userDoc.data() as UserProfile;
-            // Respect the database role, fallback to localRole if not specified
-            setProfile({ ...data, role: data.role || localRole });
-            setIsMockMode(false);
-          } else {
-            // Default new user to the role they selected when registering
-            const newProfile: UserProfile = {
+        // Attach real-time snapshot listener to their Firestore user profile document
+        unsubscribeProfile = onSnapshot(
+          doc(db, 'users', firebaseUser.uid),
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data() as UserProfile;
+              setProfile(data);
+              setIsMockMode(false);
+            } else {
+              // If the profile document doesn't exist in Firestore yet (e.g. during registration),
+              // set a local fallback profile state based on their chosen role,
+              // but DO NOT write or overwrite anything to Firestore!
+              const localRole = (localStorage.getItem('user_role') || 'student') as UserRole;
+              setProfile({
+                uid: firebaseUser.uid,
+                email: firebaseUser.email || '',
+                name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+                role: localRole,
+                photoURL: firebaseUser.photoURL || '',
+                createdAt: new Date(),
+              });
+              setIsMockMode(false);
+            }
+            setLoading(false);
+          },
+          (error) => {
+            console.warn("Firestore listener failed. Falling back to local mock:", error);
+            const localRole = (localStorage.getItem('user_role') || 'admin') as UserRole;
+            setProfile({
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
-              name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+              name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Mock User',
               role: localRole,
               photoURL: firebaseUser.photoURL || '',
-              createdAt: serverTimestamp(),
-            };
-            try {
-              await setDoc(doc(db, 'users', firebaseUser.uid), newProfile);
-              setIsMockMode(false);
-            } catch (setErr) {
-              console.warn("Failed to write user profile to firestore, using local mock:", setErr);
-              setIsMockMode(true);
-            }
-            setProfile(newProfile);
+              createdAt: new Date(),
+            });
+            setIsMockMode(true);
+            setLoading(false);
           }
-        } catch (error) {
-          console.warn("Firestore read failed (likely due to rules or uninitialized DB). Falling back to mock profile:", error);
-          const localRole = (localStorage.getItem('user_role') || 'admin') as UserRole;
-          setProfile({
-            uid: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Mock User',
-            role: localRole,
-            photoURL: firebaseUser.photoURL || '',
-            createdAt: new Date(),
-          });
-          setIsMockMode(true);
-        }
+        );
       } else {
         setProfile(null);
         setIsMockMode(false);
+        setLoading(false);
       }
-      setLoading(false);
     });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+      }
+    };
   }, []);
 
   return { user, profile, loading, isMockMode };
