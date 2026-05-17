@@ -27,6 +27,8 @@ export function Assessment() {
   const [activeQuizAttempt, setActiveQuizAttempt] = useState<any | null>(null);
   const [quizAnswers, setQuizAnswers] = useState<Record<number, string>>({});
   const [quizScoreResult, setQuizScoreResult] = useState<number | null>(null);
+  const [quizAttempts, setQuizAttempts] = useState<any[]>([]);
+  const [activeQuizReview, setActiveQuizReview] = useState<any | null>(null);
 
   // Student Assignment Submission State
   const [submitAssignmentTarget, setSubmitAssignmentTarget] = useState<any | null>(null);
@@ -91,12 +93,13 @@ export function Assessment() {
     if (!profile) return;
     setLoading(true);
     try {
-      const [snapAssign, snapSubmissions, snapQuizzes, snapCourses, snapStudents] = await Promise.all([
+      const [snapAssign, snapSubmissions, snapQuizzes, snapCourses, snapStudents, snapQuizAttempts] = await Promise.all([
         getDocs(collection(db, 'assignments')),
         getDocs(collection(db, 'submissions')),
         getDocs(collection(db, 'quizzes')),
         getDocs(collection(db, 'courses')),
-        getDocs(collection(db, 'students'))
+        getDocs(collection(db, 'students')),
+        getDocs(collection(db, 'quizAttempts'))
       ]);
 
       const fetchedAssign = snapAssign.docs.map((doc: QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() } as any));
@@ -104,6 +107,7 @@ export function Assessment() {
       const fetchedQuizzes = snapQuizzes.docs.map((doc: QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() } as any));
       const fetchedCourses = snapCourses.docs.map((doc: QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() } as any));
       const fetchedStudents = snapStudents.docs.map((doc: QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() } as any));
+      const fetchedQuizAttempts = snapQuizAttempts.docs.map((doc: QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() } as any));
 
       setCourses(fetchedCourses.length > 0 ? fetchedCourses : getMockCourses());
       setStudents(fetchedStudents.length > 0 ? fetchedStudents : []);
@@ -119,6 +123,7 @@ export function Assessment() {
         setAssignments(fetchedAssign.length > 0 ? fetchedAssign : getMockAssignments());
         setQuizzes(fetchedQuizzes.length > 0 ? fetchedQuizzes.filter(q => q.status === 'published') : getMockQuizzes());
         setSubmissions(fetchedSubmissions.length > 0 ? fetchedSubmissions.filter(s => s.studentId === profile.uid) : getMockSubmissions());
+        setQuizAttempts(fetchedQuizAttempts.filter(qa => qa.studentId === profile.uid));
       }
     } catch (err) {
       console.warn("Firestore assessment load failed. Using structured fallback mock models:", err);
@@ -267,15 +272,40 @@ export function Assessment() {
   };
 
   // Student Actions: Take Quiz
-  const handleQuizAnswersSubmit = () => {
+  const handleQuizAnswersSubmit = async () => {
     let score = 0;
     activeQuizAttempt.questions.forEach((q: any, idx: number) => {
-      if (quizAnswers[idx] === q.answer) {
+      if (quizAnswers[qIdxAsNumber(idx)] === q.answer) {
         score += 1;
       }
     });
     const finalPercent = Math.round((score / activeQuizAttempt.questions.length) * 100);
+    
+    if (profile) {
+      try {
+        await addDoc(collection(db, 'quizAttempts'), {
+          quizId: activeQuizAttempt.id,
+          quizTitle: activeQuizAttempt.title,
+          courseName: activeQuizAttempt.courseName,
+          studentId: profile.uid,
+          studentName: profile.name,
+          answers: quizAnswers,
+          score: finalPercent,
+          submittedAt: new Date(),
+          questions: activeQuizAttempt.questions,
+          status: 'completed'
+        });
+      } catch (err) {
+        console.error("Failed to save quiz attempt:", err);
+      }
+    }
+
     setQuizScoreResult(finalPercent);
+    fetchData();
+  };
+
+  const qIdxAsNumber = (idx: any) => {
+    return Number(idx);
   };
 
   // Student Actions: Submit Assignment
@@ -283,24 +313,38 @@ export function Assessment() {
     e.preventDefault();
     if (!profile || !submitAssignmentTarget) return;
     try {
-      await addDoc(collection(db, 'submissions'), {
-        assignmentId: submitAssignmentTarget.id,
-        assignmentTitle: submitAssignmentTarget.title,
-        studentId: profile.uid,
-        studentName: profile.name,
-        courseName: submitAssignmentTarget.courseName,
-        fileUrl: studentSubmitLink,
-        notes: studentSubmitNotes,
-        submittedAt: new Date(),
-        grade: '',
-        feedback: '',
-        status: 'pending'
-      });
+      const existing = submissions.find(s => s.assignmentId === submitAssignmentTarget.id && s.studentId === profile.uid);
+      
+      if (existing) {
+        // Edit existing submission
+        await updateDoc(doc(db, 'submissions', existing.id), {
+          fileUrl: studentSubmitLink,
+          notes: studentSubmitNotes,
+          submittedAt: new Date()
+        });
+        alert("Homework submission updated successfully!");
+      } else {
+        // Create new submission
+        await addDoc(collection(db, 'submissions'), {
+          assignmentId: submitAssignmentTarget.id,
+          assignmentTitle: submitAssignmentTarget.title,
+          studentId: profile.uid,
+          studentName: profile.name,
+          courseName: submitAssignmentTarget.courseName,
+          fileUrl: studentSubmitLink,
+          notes: studentSubmitNotes,
+          submittedAt: new Date(),
+          grade: '',
+          feedback: '',
+          status: 'pending'
+        });
+        alert("Homework successfully submitted to classroom!");
+      }
+      
       setSubmitAssignmentTarget(null);
       setStudentSubmitLink('');
       setStudentSubmitNotes('');
       fetchData();
-      alert("Homework successfully submitted to classroom!");
     } catch (err) {
       console.error("Assignment submission failed:", err);
     }
@@ -427,7 +471,19 @@ export function Assessment() {
                                   {submission.feedback && <p className="text-[10px] text-gray-400 mt-0.5 italic">"{submission.feedback}"</p>}
                                 </div>
                               ) : (
-                                <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-wide">Awaiting Grade</span>
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-wide">Awaiting Grade</span>
+                                  <button 
+                                    onClick={() => {
+                                      setSubmitAssignmentTarget(a);
+                                      setStudentSubmitLink(submission.fileUrl || '');
+                                      setStudentSubmitNotes(submission.notes || '');
+                                    }}
+                                    className="text-[10px] font-bold text-gray-400 hover:text-black uppercase tracking-wider underline underline-offset-2"
+                                  >
+                                    Edit Submission
+                                  </button>
+                                </div>
                               )
                             ) : (
                               <Button 
@@ -447,23 +503,51 @@ export function Assessment() {
             </Card>
           </div>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 space-y-6">
             <Card title="Available Quizzes" description="Assessments with automated immediate grading.">
               <div className="space-y-4 mt-6">
-                {quizzes.map((quiz) => (
-                  <div key={quiz.id} className="p-4 border border-gray-100 rounded-2xl flex flex-col gap-3">
-                    <div>
-                      <p className="font-bold text-sm text-gray-900">{quiz.title}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{quiz.courseName} • {quiz.questions?.length || 0} Questions</p>
+                {quizzes.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic text-center py-4">No active quizzes assigned.</p>
+                ) : (
+                  quizzes.map((quiz) => (
+                    <div key={quiz.id} className="p-4 border border-gray-100 rounded-2xl flex flex-col gap-3">
+                      <div>
+                        <p className="font-bold text-sm text-gray-900">{quiz.title}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{quiz.courseName} • {quiz.questions?.length || 0} Questions</p>
+                      </div>
+                      <Button 
+                        onClick={() => setActiveQuizAttempt(quiz)}
+                        className="w-full text-xs py-2 bg-black text-white hover:bg-gray-800"
+                      >
+                        Take Quiz Now
+                      </Button>
                     </div>
-                    <Button 
-                      onClick={() => setActiveQuizAttempt(quiz)}
-                      className="w-full text-xs py-2 bg-black text-white hover:bg-gray-800"
-                    >
-                      Take Quiz Now
-                    </Button>
-                  </div>
-                ))}
+                  ))
+                )}
+              </div>
+            </Card>
+
+            <Card title="My Performance Logs" description="Review past attempts and check correct answers.">
+              <div className="space-y-4 mt-6">
+                {quizAttempts.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic text-center py-4">No completed attempts recorded.</p>
+                ) : (
+                  quizAttempts.map((attempt) => (
+                    <div key={attempt.id} className="p-4 border border-gray-100 rounded-2xl flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-xs text-gray-900">{attempt.quizTitle}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{attempt.courseName || 'Course'} • Score: {attempt.score}%</p>
+                      </div>
+                      <Button 
+                        onClick={() => setActiveQuizReview(attempt)}
+                        variant="outline"
+                        className="text-[10px] py-1 px-2.5"
+                      >
+                        Review
+                      </Button>
+                    </div>
+                  ))
+                )}
               </div>
             </Card>
           </div>
@@ -500,10 +584,85 @@ export function Assessment() {
                     />
                   </div>
                   <div className="flex gap-2 pt-4">
-                    <Button variant="outline" type="button" onClick={() => setSubmitAssignmentTarget(null)} className="flex-1">Cancel</Button>
+                    <Button variant="outline" type="button" onClick={() => { setSubmitAssignmentTarget(null); setStudentSubmitLink(''); setStudentSubmitNotes(''); }} className="flex-1">Cancel</Button>
                     <Button type="submit" className="flex-2 bg-black text-white">Upload Deliverable</Button>
                   </div>
                 </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Student Quiz Answers Review Modal */}
+        <AnimatePresence>
+          {activeQuizReview && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div onClick={() => setActiveQuizReview(null)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0 }} 
+                animate={{ scale: 1, opacity: 1 }} 
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="relative w-full max-w-2xl bg-white rounded-3xl p-6 md:p-8 max-h-[85vh] overflow-y-auto shadow-2xl"
+              >
+                <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
+                  <div>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Syllabus Evaluation Review</span>
+                    <h3 className="text-xl font-black text-gray-900 mt-1">{activeQuizReview.quizTitle}</h3>
+                    <p className="text-xs text-gray-500 mt-1">Your final graded score: <span className="font-extrabold text-black">{activeQuizReview.score}%</span></p>
+                  </div>
+                  <button onClick={() => setActiveQuizReview(null)} className="p-1 hover:bg-gray-100 rounded-lg font-bold text-gray-500 hover:text-black">✕</button>
+                </div>
+
+                <div className="space-y-6">
+                  {activeQuizReview.questions?.map((q: any, qIdx: number) => {
+                    const studentAns = activeQuizReview.answers?.[qIdx];
+                    return (
+                      <div key={qIdx} className="p-4 border border-gray-100 rounded-2xl space-y-3">
+                        <p className="font-bold text-sm text-gray-900">{qIdx + 1}. {q.question}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {q.options?.map((opt: string) => {
+                            const isSelected = studentAns === opt;
+                            const isCorrect = q.answer === opt;
+                            
+                            let borderClass = "border-gray-100";
+                            let bgClass = "bg-white";
+                            if (isSelected) {
+                              borderClass = isCorrect ? "border-green-500" : "border-red-500";
+                              bgClass = isCorrect ? "bg-green-50/50" : "bg-red-50/50";
+                            } else if (isCorrect) {
+                              borderClass = "border-green-400 border-dashed";
+                              bgClass = "bg-green-50/20";
+                            }
+
+                            return (
+                              <div key={opt} className={`p-2.5 border rounded-xl flex items-center justify-between ${borderClass} ${bgClass}`}>
+                                <span className="text-xs font-semibold text-gray-700">{opt}</span>
+                                <div className="flex items-center gap-1.5">
+                                  {isSelected && (
+                                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${isCorrect ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                      {isCorrect ? 'Correct' : 'Your Answer'}
+                                    </span>
+                                  )}
+                                  {!isSelected && isCorrect && (
+                                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-green-50 text-green-700">
+                                      Correct Option
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="pt-6 border-t border-gray-100 flex justify-end">
+                  <Button onClick={() => setActiveQuizReview(null)} className="bg-black text-white hover:bg-gray-800 text-xs">
+                    Close Review Panel
+                  </Button>
+                </div>
               </motion.div>
             </div>
           )}
