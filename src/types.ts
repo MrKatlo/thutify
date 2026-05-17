@@ -39,6 +39,8 @@ export interface Lesson {
   content: string; // Markdown or HTML
   materials?: string[]; // URLs to materials
   completedBy?: string[]; // Array of student UIDs
+  videoUrl?: string;
+  published?: boolean;
 }
 
 export interface PaymentRecord {

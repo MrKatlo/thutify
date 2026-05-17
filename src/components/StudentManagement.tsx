@@ -1,23 +1,33 @@
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { collection, query, getDocs, addDoc, serverTimestamp, orderBy, where, deleteDoc, doc, updateDoc, QueryDocumentSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { useAuth } from '../hooks/useAuth';
 import { Button, Card } from './ui/Card';
-import { Search, Plus, Mail, Phone, Trash2, Edit, X, ShieldAlert, CheckCircle, Award } from 'lucide-react';
+import { Search, Plus, Mail, Phone, Trash2, Edit, X, ShieldAlert, CheckCircle, Award, Activity, GraduationCap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function StudentManagement() {
+  const { profile } = useAuth();
+  
+  // Data lists
   const [students, setStudents] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
   const [courseFilter, setCourseFilter] = useState<string>('all');
-  const [showForm, setShowForm] = useState(false);
+  const [progressFilter, setProgressFilter] = useState<'all' | 'low' | 'high'>('all'); // Taught Student progress tracking!
+
+  // Roster details modal
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [showStudentDetailModal, setShowStudentDetailModal] = useState<any | null>(null);
 
-  // Form State
+  // Form Fields (Admins Only)
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -30,12 +40,12 @@ export function StudentManagement() {
   useEffect(() => {
     fetchStudents();
     fetchCourses();
-  }, []);
+  }, [profile]);
 
   const getMockStudents = () => [
-    { id: 's1', fullName: 'Alex Johnson', email: 'alex@example.com', phone: '+1 234 567 890', courseId: 'Advanced Mathematics', status: 'active', paymentStatus: 'paid', totalFee: 1000, amountPaid: 1000, balance: 0, enrollmentDate: new Date() },
-    { id: 's2', fullName: 'Maria Garcia', email: 'maria@example.com', phone: '+1 987 654 321', courseId: 'Physics 101', status: 'active', paymentStatus: 'partial', totalFee: 1000, amountPaid: 400, balance: 600, enrollmentDate: new Date() },
-    { id: 's3', fullName: 'James Wilson', email: 'james@example.com', phone: '+1 555 444 333', courseId: 'Introduction to Programming', status: 'suspended', paymentStatus: 'unpaid', totalFee: 1200, amountPaid: 0, balance: 1200, enrollmentDate: new Date() },
+    { id: 's1', fullName: 'Alex Johnson', email: 'alex@example.com', phone: '+1 234 567 890', courseId: 'Advanced Mathematics', status: 'active', paymentStatus: 'paid', totalFee: 1000, amountPaid: 1000, balance: 0, enrollmentDate: new Date(), completedLessons: ['l1', 'l2'], progress: 60 },
+    { id: 's2', fullName: 'Maria Garcia', email: 'maria@example.com', phone: '+1 987 654 321', courseId: 'Physics 101', status: 'active', paymentStatus: 'partial', totalFee: 1000, amountPaid: 400, balance: 600, enrollmentDate: new Date(), completedLessons: ['l1'], progress: 30 },
+    { id: 's3', fullName: 'James Wilson', email: 'james@example.com', phone: '+1 555 444 333', courseId: 'Introduction to Programming', status: 'suspended', paymentStatus: 'unpaid', totalFee: 1200, amountPaid: 0, balance: 1200, enrollmentDate: new Date(), completedLessons: [], progress: 0 },
   ];
 
   const fetchCourses = async () => {
@@ -59,7 +69,7 @@ export function StudentManagement() {
       }));
       setStudents(fetched.length > 0 ? fetched : getMockStudents());
     } catch (error) {
-      console.warn("Firestore students fetch failed (permission or empty). Loading mock list:", error);
+      console.warn("Firestore students fetch failed. Loading mock list:", error);
       setStudents(getMockStudents());
     } finally {
       setLoading(false);
@@ -82,8 +92,6 @@ export function StudentManagement() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const balance = Number(totalFee) - Number(amountPaid);
-    
-    // Automatically calculate paymentStatus if paid in full
     let finalPaymentStatus = paymentStatus;
     if (Number(amountPaid) >= Number(totalFee)) {
       finalPaymentStatus = 'paid';
@@ -95,8 +103,7 @@ export function StudentManagement() {
 
     try {
       if (isEditing && selectedStudent) {
-        const studentDoc = doc(db, 'students', selectedStudent.id);
-        await updateDoc(studentDoc, {
+        await updateDoc(doc(db, 'students', selectedStudent.id), {
           fullName,
           email,
           phone,
@@ -118,6 +125,8 @@ export function StudentManagement() {
           totalFee: Number(totalFee),
           amountPaid: Number(amountPaid),
           balance: Number(balance),
+          progress: 0,
+          completedLessons: [],
           enrollmentDate: serverTimestamp()
         });
       }
@@ -164,24 +173,33 @@ export function StudentManagement() {
   };
 
   const filteredStudents = students.filter((s: any) => {
-    const matchesSearch = s.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = (s.fullName || s.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                           s.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
     const matchesPayment = paymentFilter === 'all' || s.paymentStatus === paymentFilter;
     const matchesCourse = courseFilter === 'all' || s.courseId === courseFilter;
-    return matchesSearch && matchesStatus && matchesPayment && matchesCourse;
+    
+    // Progress track filter
+    const progressVal = s.progress || 0;
+    const matchesProgress = progressFilter === 'all' || 
+                            (progressFilter === 'low' && progressVal < 50) || 
+                            (progressFilter === 'high' && progressVal >= 50);
+
+    return matchesSearch && matchesStatus && matchesPayment && matchesCourse && matchesProgress;
   });
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Student Management</h1>
-          <p className="text-gray-500 mt-1 font-medium text-sm">Manage enrollments, active courses, payment balances, and status logs.</p>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-gray-900">Student Profiles</h1>
+          <p className="text-gray-500 mt-1 font-medium text-sm">Manage enrollments, track learning progress, and review student details.</p>
         </div>
-        <Button onClick={() => { resetForm(); setShowForm(true); }} className="gap-2 bg-black text-white hover:bg-gray-800">
-          <Plus className="w-4 h-4" /> Add Student
-        </Button>
+        {profile?.role === 'admin' && (
+          <Button onClick={() => { resetForm(); setShowForm(true); }} className="gap-2 bg-black text-white hover:bg-gray-800">
+            <Plus className="w-4 h-4" /> Add Student
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white p-4 border border-gray-100 rounded-2xl shadow-sm">
@@ -189,7 +207,7 @@ export function StudentManagement() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input 
             type="text"
-            placeholder="Search students..."
+            placeholder="Search student details..."
             value={searchTerm}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black/5"
@@ -210,14 +228,13 @@ export function StudentManagement() {
 
         <div>
           <select 
-            value={paymentFilter}
-            onChange={(e) => setPaymentFilter(e.target.value as any)}
+            value={progressFilter}
+            onChange={(e) => setProgressFilter(e.target.value as any)}
             className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none"
           >
-            <option value="all">All Payments</option>
-            <option value="paid">Paid</option>
-            <option value="partial">Partial</option>
-            <option value="unpaid">Unpaid</option>
+            <option value="all">All Progress Levels</option>
+            <option value="low">Under 50% Complete</option>
+            <option value="high">50% and Above Complete</option>
           </select>
         </div>
 
@@ -227,7 +244,7 @@ export function StudentManagement() {
             onChange={(e) => setCourseFilter(e.target.value)}
             className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none"
           >
-            <option value="all">All Courses</option>
+            <option value="all">All Course Subjects</option>
             {courses.map(c => (
               <option key={c.id} value={c.title}>{c.title}</option>
             ))}
@@ -244,9 +261,11 @@ export function StudentManagement() {
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100">
                 <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Student</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Course & Enrollment</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Payment Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Financial Ledger</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Course Subject</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Lesson Progress</th>
+                {profile?.role === 'admin' && (
+                  <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Tuition Ledger</th>
+                )}
                 <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Status</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest text-right">Actions</th>
               </tr>
@@ -270,11 +289,15 @@ export function StudentManagement() {
                     key={s.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="hover:bg-gray-50/50 transition-colors"
+                    transition={{ delay: idx * 0.03 }}
+                    className="hover:bg-gray-50/50 transition-colors cursor-pointer"
+                    onClick={() => setShowStudentDetailModal(s)}
                   >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                      <div 
+                        onClick={() => setShowStudentDetailModal(s)}
+                        className="flex items-center gap-3 cursor-pointer"
+                      >
                         <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center font-bold text-gray-600">
                           {s.fullName?.charAt(0) || 'S'}
                         </div>
@@ -287,35 +310,49 @@ export function StudentManagement() {
                     </td>
                     <td className="px-6 py-4">
                       <p className="text-sm font-bold text-gray-900">{s.courseId || 'Unassigned'}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">Enrolled: {s.enrollmentDate ? 'Verified Live' : 'Recent Mock'}</p>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        s.paymentStatus === 'paid' ? 'bg-green-50 text-green-700' : s.paymentStatus === 'partial' ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-700'
-                      }`}>
-                        {s.paymentStatus}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-24 bg-gray-100 rounded-full h-1.5">
+                          <div className="bg-black h-1.5 rounded-full" style={{ width: `${s.progress || 0}%` }}></div>
+                        </div>
+                        <span className="text-xs font-bold text-gray-700">{s.progress || 0}%</span>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 text-xs font-semibold text-gray-600">
-                      <p>Total: ${s.totalFee || 1000}</p>
-                      <p className="text-green-600">Paid: ${s.amountPaid || 0}</p>
-                      <p className="text-red-500">Balance: ${s.balance !== undefined ? s.balance : (s.totalFee - s.amountPaid)}</p>
-                    </td>
-                    <td className="px-6 py-4">
+                    {profile?.role === 'admin' && (
+                      <td className="px-6 py-4 text-xs font-semibold text-gray-600">
+                        <p>Total: ${s.totalFee || 1000}</p>
+                        <p className="text-green-600">Paid: ${s.amountPaid || 0}</p>
+                        <p className="text-red-500">Balance: ${s.balance !== undefined ? s.balance : (s.totalFee - s.amountPaid)}</p>
+                      </td>
+                    )}
+                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                       <button 
-                        onClick={() => toggleStatus(s)}
+                        onClick={() => profile?.role === 'admin' ? toggleStatus(s) : null}
+                        disabled={profile?.role !== 'admin'}
                         className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold transition-all ${
-                          s.status === 'active' ? 'bg-green-50 text-green-700 hover:bg-orange-50 hover:text-orange-700' : 'bg-red-50 text-red-700 hover:bg-green-50 hover:text-green-700'
+                          s.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
                         }`}
                       >
                         {s.status === 'active' ? <CheckCircle className="w-3 h-3" /> : <ShieldAlert className="w-3 h-3" />}
                         {s.status?.toUpperCase() || 'ACTIVE'}
                       </button>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => handleEdit(s)} className="p-1.5 text-gray-400 hover:text-black hover:bg-gray-50 rounded-lg"><Edit className="w-4 h-4" /></button>
-                        <button onClick={() => handleDelete(s.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                        {profile?.role === 'admin' ? (
+                          <>
+                            <button onClick={() => handleEdit(s)} className="p-1.5 text-gray-400 hover:text-black hover:bg-gray-50 rounded-lg"><Edit className="w-4 h-4" /></button>
+                            <button onClick={() => handleDelete(s.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                          </>
+                        ) : (
+                          <Button 
+                            onClick={() => setShowStudentDetailModal(s)}
+                            className="text-xs py-1 px-3 bg-gray-50 text-black border hover:bg-gray-100"
+                          >
+                            View Progress
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </motion.tr>
@@ -326,6 +363,63 @@ export function StudentManagement() {
         </div>
       </div>
 
+      {/* Student Details Slide-over Detail Modal */}
+      <AnimatePresence>
+        {showStudentDetailModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div onClick={() => setShowStudentDetailModal(null)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold tracking-tight text-gray-900">Student Profile Summary</h3>
+                <button onClick={() => setShowStudentDetailModal(null)} className="p-2 hover:bg-gray-100 rounded-xl"><X className="w-5 h-5" /></button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-black text-white rounded-2xl flex items-center justify-center font-extrabold text-lg shadow-xl shadow-black/10">
+                    {showStudentDetailModal.fullName?.charAt(0) || 'S'}
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-gray-950">{showStudentDetailModal.fullName}</h4>
+                    <p className="text-xs text-gray-500 font-semibold mt-0.5">{showStudentDetailModal.email}</p>
+                  </div>
+                </div>
+
+                <Card title="Academics & Classroom Tracking">
+                  <div className="space-y-4 mt-4 text-xs font-semibold text-gray-600">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">ENROLLED COURSE:</span>
+                      <span className="text-gray-900 font-bold">{showStudentDetailModal.courseId || 'General'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">TELEPHONE PHONE:</span>
+                      <span className="text-gray-900">{showStudentDetailModal.phone || 'No direct telephone'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-2">OVERALL LESSON PROGRESS:</span>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 bg-gray-100 h-2 rounded-full">
+                          <div className="bg-black h-2 rounded-full" style={{ width: `${showStudentDetailModal.progress || 0}%` }}></div>
+                        </div>
+                        <span className="text-sm font-black text-gray-900">{showStudentDetailModal.progress || 0}%</span>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+                
+                <Button 
+                  onClick={() => setShowStudentDetailModal(null)}
+                  className="w-full bg-black text-white py-3 rounded-2xl"
+                >
+                  Return to Dashboard
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin Creator Modal */}
       <AnimatePresence>
         {showForm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -344,7 +438,7 @@ export function StudentManagement() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Full Name</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Full Name</label>
                     <input 
                       type="text" 
                       required 
@@ -354,7 +448,7 @@ export function StudentManagement() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Email Address</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Email Address</label>
                     <input 
                       type="email" 
                       required 
@@ -367,7 +461,7 @@ export function StudentManagement() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Phone Number</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Phone Number</label>
                     <input 
                       type="tel" 
                       value={phone}
@@ -376,7 +470,7 @@ export function StudentManagement() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Enrolled Course</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Enrolled Course</label>
                     <select 
                       value={courseId}
                       onChange={(e) => setCourseId(e.target.value)}
@@ -395,7 +489,7 @@ export function StudentManagement() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Total Tuition Fee ($)</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Total Tuition Fee ($)</label>
                     <input 
                       type="number" 
                       required
@@ -405,7 +499,7 @@ export function StudentManagement() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Tuition Paid ($)</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Tuition Paid ($)</label>
                     <input 
                       type="number" 
                       required
@@ -418,7 +512,7 @@ export function StudentManagement() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Account Status</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Account Status</label>
                     <select 
                       value={status}
                       onChange={(e) => setStatus(e.target.value as any)}
@@ -429,7 +523,7 @@ export function StudentManagement() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Calculated Balance ($)</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Calculated Balance ($)</label>
                     <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-600">
                       ${totalFee - amountPaid}
                     </div>
