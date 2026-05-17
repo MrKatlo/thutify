@@ -10,6 +10,12 @@ import { Assessment } from './components/Assessment';
 import { Financials } from './components/Financials';
 import { StudentManagement } from './components/StudentManagement';
 import { Reports } from './components/Reports';
+import { TeacherManagement } from './components/TeacherManagement';
+import { Attendance } from './components/Attendance';
+import { Certificates } from './components/Certificates';
+import { SystemSettings } from './components/SystemSettings';
+import { ContentManagement } from './components/ContentManagement';
+import { SystemMonitoring } from './components/SystemMonitoring';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, X } from 'lucide-react';
 import { Button } from './components/ui/Card';
@@ -45,10 +51,24 @@ export default function App() {
         return <Financials />;
       case 'students':
         return <StudentManagement />;
+      case 'teachers':
+        return <TeacherManagement />;
       case 'reports':
         return <Reports />;
       case 'announcements':
         return <Announcements />;
+      case 'attendance':
+        return <Attendance />;
+      case 'assessment':
+        return <Assessment />;
+      case 'certificates':
+        return <Certificates />;
+      case 'content':
+        return <ContentManagement />;
+      case 'settings':
+        return <SystemSettings />;
+      case 'monitoring':
+        return <SystemMonitoring />;
       default:
         return (
           <div className="p-8 flex items-center justify-center min-h-[50vh]">
