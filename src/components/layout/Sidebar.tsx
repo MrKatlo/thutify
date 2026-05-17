@@ -1,8 +1,9 @@
 import { BookOpen, Home, LogOut, Users, Bell, DollarSign, BarChart2, CheckSquare, Award, Settings, FileText, Activity, PenTool, GraduationCap, Video, Calendar, Folder } from 'lucide-react';
 import { Button } from '../ui/Card';
-import { logout } from '../../lib/firebase';
+import { logout, db } from '../../lib/firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { cn } from '../../lib/utils';
+import { doc, updateDoc } from 'firebase/firestore';
 
 export function Sidebar({ 
   activeTab, 
@@ -40,8 +41,17 @@ export function Sidebar({
     profile?.role && item.roles.includes(profile.role)
   );
 
-  const handleRoleChange = (newRole: any) => {
+  const handleRoleChange = async (newRole: any) => {
     localStorage.setItem('user_role', newRole);
+    if (profile?.uid) {
+      try {
+        await updateDoc(doc(db, 'users', profile.uid), {
+          role: newRole
+        });
+      } catch (err) {
+        console.error("Failed to persist role change to Firestore:", err);
+      }
+    }
     window.location.reload();
   };
 
