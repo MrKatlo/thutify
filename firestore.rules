@@ -30,9 +30,9 @@ service cloud.firestore {
     // Match Blocks
     match /users/{userId} {
       allow get: if isSignedIn();
-      allow list: if isSignedIn(); // Allow searching for students/teachers
-      allow create: if isSignedIn(); // Allow initial profile creation
-      allow update: if isSignedIn(); // Allow profile updates
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
       allow delete: if isAdmin();
     }
 
@@ -44,7 +44,7 @@ service cloud.firestore {
     }
 
     match /payments/{paymentId} {
-      allow read: if isAdmin() || isOwner(resource.data.studentId);
+      allow read: if isAdmin() || isSignedIn();
       allow create: if isAdmin();
       allow update: if isAdmin();
       allow delete: if isAdmin();
@@ -55,6 +55,48 @@ service cloud.firestore {
       allow create: if isAdmin() || isTeacher();
       allow update: if isAdmin() || isTeacher();
       allow delete: if isAdmin() || isTeacher();
+    }
+
+    // Upgraded dynamic collections
+    match /lessonProgress/{progressId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    match /submissions/{submissionId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /quizzes/{quizId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    match /quizAttempts/{attemptId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /attendance/{attendanceId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    match /materials/{materialId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    match /liveClasses/{classId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    match /messages/{messageId} {
+      allow read, write: if isSignedIn();
     }
   }
 }
