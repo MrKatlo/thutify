@@ -62,3 +62,12 @@ export interface FinancialReport {
   totalAmountReceived: number;
   outstandingBalance: number;
 }
+
+export interface Announcement {
+  id?: string;
+  content: string;
+  authorId: string;
+  authorName: string;
+  courseId: string;
+  createdAt: any;
+}

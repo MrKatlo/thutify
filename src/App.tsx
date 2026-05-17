@@ -5,8 +5,7 @@ import { Sidebar } from './components/layout/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { CourseList } from './components/courses/CourseList';
 import { Announcements } from './components/Announcements';
-import { Sessions } from './components/Sessions';
-import { Assessment } from './components/Assessment';
+import { Assessment } from './components/Assessment.tsx';
 import { Financials } from './components/Financials';
 import { StudentManagement } from './components/StudentManagement';
 import { Reports } from './components/Reports';
@@ -52,8 +51,6 @@ export default function App() {
         return <CourseList />;
       case 'announcements':
         return <Announcements />;
-      case 'sessions':
-        return <Sessions />;
       case 'assessment':
         return <Assessment />;
       case 'financials':
@@ -99,7 +96,7 @@ export default function App() {
           <div className="flex items-center gap-2">
             <span className="text-amber-500">⚠️</span>
             <span>
-              <strong>Firestore Permission Denied</strong>. Running in local mock mode. Please copy the rules in <code>firestore.rules</code> and publish them in your **Firebase Console** under Firestore -> Rules.
+              <strong>Firestore Permission Denied</strong>. Running in local mock mode. Please copy the rules in <code>firestore.rules</code> and publish them in your **Firebase Console** under Firestore {"->"} Rules.
             </span>
           </div>
           <button 
