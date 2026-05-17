@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, limit, QueryDocumentSnapshot, where } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
-import { Card } from './ui/Card';
+import { Card, Button } from './ui/Card';
 import { BookOpen, Users, Calendar, TrendingUp, Plus, DollarSign, CheckCircle, Clock, Video, Bell, PenTool, Award, Play } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
