@@ -247,7 +247,7 @@ export function Announcements() {
           <div className="md:col-span-1 space-y-4">
             <Card title="Chat Channels">
               <div className="space-y-2 mt-4">
-                {['General Discussion', 'Advanced Mathematics', 'Physics 101', 'Introduction to Programming'].map((topic) => (
+                {['General Discussion', ...courses.map(c => c.title)].map((topic) => (
                   <div
                     key={topic}
                     onClick={() => setSelectedCourseTopic(topic)}
