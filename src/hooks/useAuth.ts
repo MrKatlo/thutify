@@ -16,14 +16,16 @@ export function useAuth() {
         try {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {
-            setProfile(userDoc.data() as UserProfile);
+            const data = userDoc.data() as UserProfile;
+            // Force admin role for testing UI
+            setProfile({ ...data, role: 'admin' });
           } else {
-            // Default new user to 'student' role
+            // Default new user to 'admin' role for testing
             const newProfile: UserProfile = {
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
               name: firebaseUser.displayName || '',
-              role: 'student' as UserRole,
+              role: 'admin' as UserRole,
               photoURL: firebaseUser.photoURL || '',
               createdAt: serverTimestamp(),
             };
