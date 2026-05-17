@@ -26,7 +26,7 @@ export function Sidebar({
     { id: 'financials', label: 'Financials', icon: DollarSign, roles: ['admin', 'student'] },
     { id: 'attendance', label: 'Attendance', icon: CheckSquare, roles: ['admin', 'teacher', 'student'] },
     { id: 'assessment', label: 'Assignments', icon: PenTool, roles: ['admin', 'teacher', 'student'] },
-    { id: 'liveclasses', label: 'Live Classes', icon: Video, roles: ['admin', 'teacher'] },
+    { id: 'liveclasses', label: 'Live Classes', icon: Video, roles: ['admin', 'teacher', 'student'] },
     { id: 'calendar', label: 'Calendar', icon: Calendar, roles: ['admin', 'teacher', 'student'] },
     { id: 'library', label: 'Content Library', icon: Folder, roles: ['admin', 'teacher'] },
     { id: 'certificates', label: 'Certificates', icon: Award, roles: ['admin', 'student'] },

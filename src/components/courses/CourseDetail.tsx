@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, updateDoc, setDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { Course, Module, Lesson } from '../../types';
@@ -29,10 +29,30 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
   const [newLessonResource, setNewLessonResource] = useState('');
   const [editingLessonTarget, setEditingLessonTarget] = useState<{ moduleId: string; lesson: Lesson } | null>(null);
 
+  // Student active learning flow states
+  const [activeStudyLesson, setActiveStudyLesson] = useState<Lesson | null>(null);
+
   const toggleModule = (moduleId: string) => {
     setExpandedModules((prev: string[]) => 
       prev.includes(moduleId) ? prev.filter((id: string) => id !== moduleId) : [...prev, moduleId]
     );
+  };
+
+  const trackLessonOpened = async (lesson: Lesson) => {
+    if (!profile) return;
+    try {
+      localStorage.setItem(`last_lesson_${course.id}`, lesson.id);
+      const progressId = `${profile.uid}-${lesson.id}`;
+      await setDoc(doc(db, 'lessonProgress', progressId), {
+        studentId: profile.uid,
+        courseId: course.id,
+        lessonId: lesson.id,
+        completed: profile.completedLessons?.includes(lesson.id) || false,
+        lastOpenedAt: new Date()
+      }, { merge: true });
+    } catch (err) {
+      console.warn("Could not track lesson progress in Firestore:", err);
+    }
   };
 
   const handleToggleLesson = async (lessonId: string, isCompleted: boolean) => {
@@ -41,7 +61,19 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
       await updateDoc(doc(db, 'users', profile.uid), {
         completedLessons: isCompleted ? arrayRemove(lessonId) : arrayUnion(lessonId)
       });
+      
+      const progressId = `${profile.uid}-${lessonId}`;
+      await setDoc(doc(db, 'lessonProgress', progressId), {
+        studentId: profile.uid,
+        courseId: course.id,
+        lessonId,
+        completed: !isCompleted,
+        completedAt: !isCompleted ? new Date() : null,
+        lastOpenedAt: new Date()
+      }, { merge: true });
+
       alert("Lesson completion status updated!");
+      onUpdate();
     } catch (err) {
       console.error("Failed to toggle lesson completion:", err);
     }
@@ -225,43 +257,49 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
                         {module.lessons
                           .filter(l => role !== 'student' || l.published !== false)
                           .map((lesson) => (
-                            <div key={lesson.id} className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-100 group">
-                              <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 bg-gray-50 rounded-lg flex items-center justify-center">
+                            <div key={lesson.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white rounded-xl border border-gray-100 group gap-4">
+                              <div className="flex items-center gap-4 flex-1">
+                                <div className="w-10 h-10 bg-gray-50 rounded-lg flex items-center justify-center shrink-0">
                                   <FileText className="w-5 h-5 text-gray-400" />
                                 </div>
-                                <div>
+                                <div className="min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <h5 className="font-bold text-gray-900 text-sm">{lesson.title}</h5>
+                                    <h5 className="font-bold text-gray-900 text-sm truncate">{lesson.title}</h5>
                                     {lesson.published === false && (
                                       <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">Unpublished</span>
                                     )}
                                   </div>
-                                  <p className="text-xs text-gray-500 mt-0.5">{lesson.content.slice(0, 75)}...</p>
+                                  <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{lesson.content.slice(0, 100)}...</p>
                                   {(lesson as any).videoUrl && (
-                                    <a 
-                                      href={(lesson as any).videoUrl} 
-                                      target="_blank" 
-                                      rel="noreferrer" 
-                                      className="text-[10px] text-blue-600 font-bold hover:underline block mt-1"
-                                    >
-                                      Reference Materials Link
-                                    </a>
+                                    <span className="inline-block text-[9px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.5 rounded mt-1">
+                                      Contains study material
+                                    </span>
                                   )}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-3 self-end sm:self-auto shrink-0">
                                 {role === 'student' ? (
-                                  <button 
-                                    onClick={() => handleToggleLesson(lesson.id, profile?.completedLessons?.includes(lesson.id) || false)}
-                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
-                                      profile?.completedLessons?.includes(lesson.id)
-                                        ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100/70'
-                                        : 'border-gray-200 text-gray-400 hover:text-black'
-                                    }`}
-                                  >
-                                    {profile?.completedLessons?.includes(lesson.id) ? '✓ Completed' : 'Mark Complete'}
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <Button 
+                                      onClick={() => {
+                                        setActiveStudyLesson(lesson);
+                                        trackLessonOpened(lesson);
+                                      }}
+                                      className="text-xs py-1.5 bg-black text-white hover:bg-gray-800"
+                                    >
+                                      Study Lesson
+                                    </Button>
+                                    <button 
+                                      onClick={() => handleToggleLesson(lesson.id, profile?.completedLessons?.includes(lesson.id) || false)}
+                                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                                        profile?.completedLessons?.includes(lesson.id)
+                                          ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100/70'
+                                          : 'border-gray-200 text-gray-400 hover:text-black'
+                                      }`}
+                                    >
+                                      {profile?.completedLessons?.includes(lesson.id) ? '✓ Completed' : 'Mark Complete'}
+                                    </button>
+                                  </div>
                                 ) : (
                                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
                                     <button 
@@ -375,6 +413,94 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
                   </Button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Student Study Lesson Modal */}
+      <AnimatePresence>
+        {activeStudyLesson && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setActiveStudyLesson(null)} />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }} 
+              animate={{ scale: 1, opacity: 1 }} 
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-2xl bg-white rounded-3xl p-6 md:p-8 max-h-[85vh] overflow-y-auto shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
+                <div>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active Study Workspace</span>
+                  <h3 className="text-2xl font-black text-gray-900 mt-1">{activeStudyLesson.title}</h3>
+                </div>
+                <button 
+                  onClick={() => setActiveStudyLesson(null)} 
+                  className="p-1 hover:bg-gray-100 rounded-lg font-bold text-gray-500 hover:text-black text-lg transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                {/* Responsive Embedded Resource / Video Player */}
+                {(activeStudyLesson as any).videoUrl ? (
+                  <div className="w-full bg-black rounded-2xl overflow-hidden aspect-video relative flex flex-col items-center justify-center p-4">
+                    {/* Simulated premium dynamic player */}
+                    <div className="absolute inset-0 bg-cover bg-center opacity-40 blur-xs" style={{ backgroundImage: `url('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=800&q=80')` }} />
+                    <div className="z-10 text-center space-y-4 max-w-md">
+                      <span className="inline-block bg-blue-500 text-white font-bold text-[10px] uppercase tracking-widest px-3 py-1 rounded-full">
+                        Premium Lesson Materials
+                      </span>
+                      <h4 className="text-white text-lg font-black tracking-tight truncate">{(activeStudyLesson as any).videoUrl.split('/').pop()}</h4>
+                      <p className="text-gray-300 text-xs">Interactive video streams and lecture slides are loaded securely.</p>
+                      <div className="flex justify-center gap-3">
+                        <a 
+                          href={(activeStudyLesson as any).videoUrl} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="bg-white hover:bg-gray-100 text-black font-extrabold text-xs px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all active:scale-95 shadow-lg"
+                        >
+                          Launch Material
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-6 bg-gray-50 rounded-2xl text-center border border-gray-100">
+                    <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">No external attachments configured for this lecture.</p>
+                  </div>
+                )}
+
+                {/* Lesson text content */}
+                <div className="space-y-3">
+                  <h4 className="font-extrabold text-gray-900 text-sm uppercase tracking-wider">Syllabus Details</h4>
+                  <div className="bg-gray-50/50 border border-gray-100 rounded-2xl p-5 text-sm text-gray-700 leading-relaxed whitespace-pre-line font-medium">
+                    {activeStudyLesson.content}
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <button 
+                    onClick={() => handleToggleLesson(activeStudyLesson.id, profile?.completedLessons?.includes(activeStudyLesson.id) || false)}
+                    className={`flex items-center justify-center gap-2 px-5 py-3 rounded-xl border font-bold text-xs transition-all active:scale-95 ${
+                      profile?.completedLessons?.includes(activeStudyLesson.id)
+                        ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
+                        : 'border-gray-200 bg-black text-white hover:bg-gray-800'
+                    }`}
+                  >
+                    {profile?.completedLessons?.includes(activeStudyLesson.id) ? '✓ Completed' : 'Mark Lesson as Completed'}
+                  </button>
+
+                  <Button 
+                    onClick={() => setActiveStudyLesson(null)}
+                    variant="outline"
+                    className="py-3 px-6 text-xs"
+                  >
+                    Close Workspace
+                  </Button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

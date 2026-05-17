@@ -272,12 +272,25 @@ export function CourseList() {
                       </>
                     )}
                     {profile?.role === 'student' && (
-                      <Button 
-                        onClick={() => handleEnrollment(course, 'enroll')}
-                        className="text-xs bg-black text-white hover:bg-gray-800"
-                      >
-                        Enroll Now
-                      </Button>
+                      profile.enrolledCourses?.includes(course.title) ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-1 rounded-lg">Enrolled</span>
+                          <Button 
+                            onClick={() => handleEnrollment(course, 'drop')}
+                            variant="outline"
+                            className="text-xs border-red-200 text-red-600 hover:bg-red-50 py-1 px-2.5"
+                          >
+                            Drop
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button 
+                          onClick={() => handleEnrollment(course, 'enroll')}
+                          className="text-xs bg-black text-white hover:bg-gray-800"
+                        >
+                          Enroll Now
+                        </Button>
+                      )
                     )}
                   </div>
                 </div>
