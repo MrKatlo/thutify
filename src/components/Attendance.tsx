@@ -1,8 +1,10 @@
 import { Card, Button } from './ui/Card';
 import { Calendar, Check, X, Clock, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useAuth } from '../hooks/useAuth';
 
 export function Attendance() {
+  const { profile } = useAuth();
   const courses = ['Advanced Mathematics', 'Physics 101', 'Introduction to Programming'];
   const students = [
     { name: 'Alex Johnson', status: 'present' },
@@ -11,6 +13,120 @@ export function Attendance() {
     { name: 'Emma Davis', status: 'present' },
     { name: 'Liam Smith', status: 'present' },
   ];
+
+  if (profile?.role === 'student') {
+    const studentHistory = [
+      { date: 'May 16, 2024', course: 'Advanced Mathematics', time: '2:00 PM', status: 'present' },
+      { date: 'May 15, 2024', course: 'Physics 101', time: '10:00 AM', status: 'present' },
+      { date: 'May 14, 2024', course: 'Advanced Mathematics', time: '2:00 PM', status: 'late' },
+      { date: 'May 13, 2024', course: 'Introduction to Programming', time: '11:00 AM', status: 'present' },
+      { date: 'May 10, 2024', course: 'Physics 101', time: '10:00 AM', status: 'absent' },
+    ];
+
+    return (
+      <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Attendance Report</h1>
+          <p className="text-gray-500 mt-1 font-medium">Monitor your presence, absences, and overall punctuality.</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card className="bg-black text-white border-none shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-white/10 rounded-lg">
+                <Check className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Overall Attendance</span>
+            </div>
+            <h3 className="text-3xl font-black">92%</h3>
+            <p className="text-xs mt-2 opacity-60 font-bold uppercase tracking-widest">Target: 85% Minimum Requirement</p>
+          </Card>
+
+          <Card className="bg-green-50 border-green-100">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <Check className="w-5 h-5 text-green-600" />
+              </div>
+              <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Total Classes Present</span>
+            </div>
+            <h3 className="text-3xl font-black text-green-900">24 Sessions</h3>
+            <p className="text-xs mt-2 text-green-500 font-bold uppercase tracking-widest">Active & Consistent</p>
+          </Card>
+
+          <Card className="bg-red-50 border-red-100">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <X className="w-5 h-5 text-red-600" />
+              </div>
+              <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">Absences & Late Arrivals</span>
+            </div>
+            <h3 className="text-3xl font-black text-red-900">1 Absent • 1 Late</h3>
+            <p className="text-xs mt-2 text-red-500 font-bold uppercase tracking-widest">Excellent Punctuality</p>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-1">
+            <Card title="Subject Attendance Breakdown">
+              <div className="space-y-4 mt-6">
+                {[
+                  { course: 'Advanced Mathematics', percent: 95, present: 11, total: 12 },
+                  { course: 'Physics 101', percent: 88, present: 8, total: 9 },
+                  { course: 'Introduction to Programming', percent: 100, present: 5, total: 5 },
+                ].map((item, idx) => (
+                  <div key={idx} className="p-4 border border-gray-100 rounded-2xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="font-bold text-sm text-gray-900">{item.course}</p>
+                      <span className="text-xs font-bold text-gray-500">{item.percent}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5 mb-2">
+                      <div className="bg-black h-1.5 rounded-full" style={{ width: `${item.percent}%` }}></div>
+                    </div>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                      Attended {item.present} of {item.total} classes
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          <div className="lg:col-span-2">
+            <Card title="Recent Attendance Ledger" description="History of recent class attendance activities.">
+              <div className="overflow-x-auto mt-6">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Course</th>
+                      <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Time</th>
+                      <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {studentHistory.map((h, i) => (
+                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                        <td className="py-4 px-4 text-sm font-bold text-gray-900">{h.date}</td>
+                        <td className="py-4 px-4 text-sm font-semibold text-gray-700">{h.course}</td>
+                        <td className="py-4 px-4 text-sm text-gray-500">{h.time}</td>
+                        <td className="py-4 px-4 text-right">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                            h.status === 'present' ? 'bg-green-50 text-green-700' : h.status === 'late' ? 'bg-yellow-50 text-yellow-700' : 'bg-red-50 text-red-700'
+                          }`}>
+                            {h.status?.toUpperCase()}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">

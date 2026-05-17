@@ -3,16 +3,113 @@ import { collection, query, getDocs, orderBy, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { PaymentRecord, UserProfile, Course } from '../types';
 import { Card } from './ui/Card';
-import { TrendingUp, Users, DollarSign, Download, Printer, Clock } from 'lucide-react';
+import { TrendingUp, Users, DollarSign, Download, Printer, Clock, Award } from 'lucide-react';
 import { motion } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart as RePieChart, Pie, Legend } from 'recharts';
 import { Button } from './ui/Card';
+import { useAuth } from '../hooks/useAuth';
 
 export function Reports() {
+  const { profile } = useAuth();
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
+
+  if (profile?.role === 'student') {
+    const studentGrades = [
+      { subject: 'Advanced Calculus', score: 88, grade: 'A', status: 'Completed' },
+      { subject: 'Mechanics (Physics)', score: 75, grade: 'B', status: 'In Progress' },
+      { subject: 'Coding Fundamentals', score: 95, grade: 'A+', status: 'In Progress' },
+    ];
+
+    return (
+      <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-8 font-sans leading-relaxed">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Academic Progress Report</h1>
+            <p className="text-gray-500 mt-1 font-medium">Detailed breakdown of your course progress, grades, and completion metrics.</p>
+          </div>
+          <button 
+            onClick={() => window.print()}
+            className="flex items-center gap-2 px-4 py-2.5 bg-black text-white rounded-xl font-bold text-sm hover:bg-gray-800 transition-all print:hidden"
+          >
+            <Printer className="w-4 h-4" />
+            Print Report
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {[
+            { label: 'Overall Progress', value: '74%', sub: 'Avg. Course Progress', icon: TrendingUp, color: 'text-green-600 bg-green-50' },
+            { label: 'Courses Enrolled', value: '3 Active', sub: 'LMS Active Courses', icon: Users, color: 'text-blue-600 bg-blue-50' },
+            { label: 'Lessons Completed', value: `${profile.completedLessons?.length || 18}`, sub: 'Completed Syllabus Items', icon: Clock, color: 'text-purple-600 bg-purple-50' },
+            { label: 'Certificates Unlocked', value: '1 Earned', sub: 'Verified Credentials', icon: Award, color: 'text-amber-600 bg-amber-50' },
+          ].map((item, i) => (
+             <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
+               <Card className="p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={`p-2 rounded-lg ${item.color}`}>
+                      <item.icon className="w-4 h-4" />
+                    </div>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{item.label}</span>
+                  </div>
+                  <h4 className="text-2xl font-black">{item.value}</h4>
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">{item.sub}</p>
+               </Card>
+             </motion.div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <Card title="Subject Performance Breakdown" description="Verified grades and active assessment scores.">
+            <div className="space-y-4 mt-6">
+              {studentGrades.map((g, idx) => (
+                <div key={idx} className="p-4 border border-gray-100 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-gray-900">{g.subject}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Status: {g.status}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-lg font-black text-black">{g.score}%</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Grade {g.grade}</p>
+                    </div>
+                    <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold ${
+                      g.status === 'Completed' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'
+                    }`}>
+                      {g.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card title="Progress Analytics" description="Visual metric of course completion rate.">
+            <div className="h-64 w-full mt-6">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={[
+                  { name: 'Mathematics', progress: 85 },
+                  { name: 'Physics', progress: 42 },
+                  { name: 'Programming', progress: 95 }
+                ]} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
+                  <XAxis type="number" axisLine={false} tickLine={false} hide />
+                  <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: 700, fill: '#374151' }} width={100} />
+                  <Tooltip 
+                    cursor={{ fill: '#f9fafb' }}
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Bar dataKey="progress" fill="#000000" radius={[0, 4, 4, 0]} barSize={24} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   const getMockStudents = (): UserProfile[] => [
     { uid: 's1', email: 'alex@example.com', name: 'Alex Johnson', phone: '+1 234 567 890', role: 'student', courseEnrolled: 'Advanced Mathematics', paymentStatus: 'paid', progress: 85, createdAt: new Date() },

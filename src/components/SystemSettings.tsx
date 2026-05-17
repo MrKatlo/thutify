@@ -6,7 +6,7 @@ import { motion } from 'motion/react';
 
 export function SystemSettings() {
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState(profile?.role === 'teacher' ? 'profile' : 'branding');
+  const [activeTab, setActiveTab] = useState((profile?.role === 'teacher' || profile?.role === 'student') ? 'profile' : 'branding');
   const [availability, setAvailability] = useState('Active');
   const [darkMode, setDarkMode] = useState(false);
 
@@ -24,7 +24,7 @@ export function SystemSettings() {
     { id: 'theme', label: 'Theme (Dark Mode)', icon: Palette },
   ];
 
-  const tabs = profile?.role === 'teacher' ? teacherTabs : adminTabs;
+  const tabs = (profile?.role === 'teacher' || profile?.role === 'student') ? teacherTabs : adminTabs;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">

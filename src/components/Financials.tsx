@@ -152,6 +152,118 @@ export function Financials() {
     return matchesStatus && matchesSearch;
   });
 
+  if (profile?.role === 'student') {
+    const studentPayments = payments.filter((p: PaymentRecord) => p.studentId === profile.uid || p.studentName === profile.name);
+    const studentPaid = studentPayments.reduce((sum, p) => sum + p.amountPaid, 0);
+    const studentTotal = studentPayments.reduce((sum, p) => sum + p.totalAmount, 0);
+    const studentBalance = studentTotal - studentPaid;
+
+    return (
+      <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-gray-900">Financial Ledger</h1>
+          <p className="text-gray-500 mt-1 font-medium">View your outstanding balance, invoices, and transaction history.</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <Card className="bg-black text-white border-none shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-white/10 rounded-lg">
+                <DollarSign className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Total Paid</span>
+            </div>
+            <h3 className="text-3xl font-black">${studentPaid.toLocaleString()}</h3>
+            <p className="text-xs mt-2 opacity-60 font-bold uppercase tracking-widest">Total Invoiced: ${studentTotal.toLocaleString()}</p>
+          </Card>
+
+          <Card className="bg-red-50 border-red-100">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-red-100 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-red-600" />
+              </div>
+              <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">Outstanding Balance</span>
+            </div>
+            <h3 className="text-3xl font-black text-red-900">${studentBalance.toLocaleString()}</h3>
+            <p className="text-xs mt-2 text-red-500 font-bold uppercase tracking-widest">
+              {studentBalance > 0 ? 'Payment Required' : 'Account Fully Settled'}
+            </p>
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-green-50 rounded-lg">
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+              </div>
+              <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Account Status</span>
+            </div>
+            <h3 className="text-3xl font-black text-gray-900">
+              {profile.paymentStatus === 'paid' ? 'Active' : profile.paymentStatus === 'partial' ? 'Active (Arrears)' : 'Suspended'}
+            </h3>
+            <p className="text-xs mt-2 text-gray-400 font-bold uppercase tracking-widest">
+              Payment Status: {profile.paymentStatus || 'unpaid'}
+            </p>
+          </Card>
+        </div>
+
+        <Card title="Payment Records" description="Official receipts and transactional details.">
+          <div className="overflow-x-auto mt-6">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Reference</th>
+                  <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Course</th>
+                  <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Method</th>
+                  <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Paid</th>
+                  <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Receipt</th>
+                </tr>
+              </thead>
+              <tbody>
+                {studentPayments.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-gray-400 font-medium italic">
+                      No payment records found.
+                    </td>
+                  </tr>
+                ) : (
+                  studentPayments.map((p) => (
+                    <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                      <td className="py-4 px-4 font-bold text-gray-900 text-sm">{p.referenceNumber || 'N/A'}</td>
+                      <td className="py-4 px-4 text-sm font-semibold text-gray-700">{p.courseName}</td>
+                      <td className="py-4 px-4 text-sm text-gray-500">
+                        {p.paymentDate instanceof Date ? p.paymentDate.toLocaleDateString() : 'Recent'}
+                      </td>
+                      <td className="py-4 px-4 text-sm font-medium text-gray-500">{p.paymentMethod}</td>
+                      <td className="py-4 px-4 font-black text-black text-sm">${p.amountPaid.toLocaleString()}</td>
+                      <td className="py-4 px-4">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                          p.status === 'paid' ? 'bg-green-50 text-green-700' : p.status === 'partial' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'
+                        }`}>
+                          {p.status?.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        <Button 
+                          onClick={() => alert(`Official Receipt\nReference: ${p.referenceNumber}\nCourse: ${p.courseName}\nAmount Paid: $${p.amountPaid}\nStatus: ${p.status?.toUpperCase()}\n\nThank you for choosing LearnFlow!`)}
+                          variant="outline" 
+                          className="text-xs py-1.5"
+                        >
+                          Download Receipt
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   if (profile?.role !== 'admin') {
     return (
       <div className="p-8 text-center">
