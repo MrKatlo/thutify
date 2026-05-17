@@ -16,6 +16,9 @@ import { Certificates } from './components/Certificates';
 import { SystemSettings } from './components/SystemSettings';
 import { ContentManagement } from './components/ContentManagement';
 import { SystemMonitoring } from './components/SystemMonitoring';
+import { LiveClasses } from './components/LiveClasses';
+import { ScheduleCalendar } from './components/ScheduleCalendar';
+import { ContentLibrary } from './components/ContentLibrary';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, X } from 'lucide-react';
 import { Button } from './components/ui/Card';
@@ -69,6 +72,12 @@ export default function App() {
         return <SystemSettings />;
       case 'monitoring':
         return <SystemMonitoring />;
+      case 'liveclasses':
+        return <LiveClasses />;
+      case 'calendar':
+        return <ScheduleCalendar />;
+      case 'library':
+        return <ContentLibrary />;
       default:
         return (
           <div className="p-8 flex items-center justify-center min-h-[50vh]">

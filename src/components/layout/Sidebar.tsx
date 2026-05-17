@@ -1,4 +1,4 @@
-import { BookOpen, Home, LogOut, Users, Bell, DollarSign, BarChart2, CheckSquare, Award, Settings, FileText, Activity, PenTool, GraduationCap } from 'lucide-react';
+import { BookOpen, Home, LogOut, Users, Bell, DollarSign, BarChart2, CheckSquare, Award, Settings, FileText, Activity, PenTool, GraduationCap, Video, Calendar, Folder } from 'lucide-react';
 import { Button } from '../ui/Card';
 import { logout } from '../../lib/firebase';
 import { useAuth } from '../../hooks/useAuth';
@@ -25,12 +25,15 @@ export function Sidebar({
     { id: 'financials', label: 'Financials', icon: DollarSign, roles: ['admin'] },
     { id: 'attendance', label: 'Attendance', icon: CheckSquare, roles: ['admin', 'teacher'] },
     { id: 'assessment', label: 'Assignments', icon: PenTool, roles: ['admin', 'teacher'] },
+    { id: 'liveclasses', label: 'Live Classes', icon: Video, roles: ['admin', 'teacher'] },
+    { id: 'calendar', label: 'Calendar', icon: Calendar, roles: ['admin', 'teacher'] },
+    { id: 'library', label: 'Content Library', icon: Folder, roles: ['admin', 'teacher'] },
     { id: 'certificates', label: 'Certificates', icon: Award, roles: ['admin'] },
     { id: 'announcements', label: 'Announcements', icon: Bell, roles: ['admin', 'teacher', 'student'] },
     { id: 'reports', label: 'Reports', icon: BarChart2, roles: ['admin', 'teacher'] },
     { id: 'content', label: 'CMS Content', icon: FileText, roles: ['admin'] },
     { id: 'monitoring', label: 'Monitoring', icon: Activity, roles: ['admin'] },
-    { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin'] },
+    { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin', 'teacher'] },
   ];
 
   const filteredMenu = menuItems.filter(item => 
