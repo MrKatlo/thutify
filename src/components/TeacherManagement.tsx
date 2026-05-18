@@ -1,16 +1,31 @@
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
-import { collection, query, getDocs, addDoc, serverTimestamp, orderBy, where, deleteDoc, doc, updateDoc, QueryDocumentSnapshot } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  getDocs, 
+  addDoc, 
+  serverTimestamp, 
+  orderBy, 
+  where, 
+  deleteDoc, 
+  doc, 
+  updateDoc, 
+  QueryDocumentSnapshot,
+  getDoc,
+  setDoc
+} from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Button, Card } from './ui/Card';
-import { Search, Plus, Mail, Phone, Trash2, Edit, X, ShieldAlert, CheckCircle } from 'lucide-react';
+import { Search, Plus, Mail, Phone, Trash2, Edit, X, ShieldAlert, CheckCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { UserProfile, TeacherProfile } from '../types';
 
 export function TeacherManagement() {
   const [teachers, setTeachers] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
   const [showForm, setShowForm] = useState(false);
   const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -20,42 +35,37 @@ export function TeacherManagement() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [assignedCourses, setAssignedCourses] = useState<string[]>([]);
-  const [status, setStatus] = useState<'active' | 'inactive'>('active');
+  const [status, setStatus] = useState<'active' | 'suspended'>('active');
 
   useEffect(() => {
-    fetchTeachers();
-    fetchCourses();
+    fetchData();
   }, []);
 
-  const getMockTeachers = () => [
-    { id: 't1', fullName: 'Dr. Sarah Smith', email: 'sarah@example.com', phone: '+1 234 567 890', assignedCourses: ['Advanced Mathematics'], status: 'active' },
-    { id: 't2', fullName: 'Prof. James Wilson', email: 'james@example.com', phone: '+1 987 654 321', assignedCourses: ['Physics 101'], status: 'active' },
-    { id: 't3', fullName: 'Emily Chen', email: 'emily@example.com', phone: '+1 555 444 333', assignedCourses: ['Introduction to Programming'], status: 'inactive' },
-  ];
-
-  const fetchCourses = async () => {
-    try {
-      const snap = await getDocs(collection(db, 'courses'));
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setCourses(list);
-    } catch (err) {
-      console.warn("Could not load courses collection for teacher picker:", err);
-    }
-  };
-
-  const fetchTeachers = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'teachers'), orderBy('fullName', 'asc'));
-      const snapshot = await getDocs(q);
-      const fetched = snapshot.docs.map((doc: QueryDocumentSnapshot) => ({
-        id: doc.id,
-        ...doc.data()
+      // 1. Fetch Courses
+      const courseSnap = await getDocs(collection(db, 'courses'));
+      setCourses(courseSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // 2. Fetch Users with role 'teacher'
+      const userSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'teacher')));
+      const teacherUsers = userSnap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile));
+
+      // 3. Fetch Teacher Profiles and Join
+      const combined = await Promise.all(teacherUsers.map(async (user) => {
+        const profileSnap = await getDoc(doc(db, 'teachers', user.uid));
+        const profileData = profileSnap.exists() ? profileSnap.data() as TeacherProfile : null;
+        return {
+          id: user.uid,
+          user,
+          profile: profileData
+        };
       }));
-      setTeachers(fetched.length > 0 ? fetched : getMockTeachers());
+
+      setTeachers(combined);
     } catch (error) {
-      console.warn("Firestore teachers fetch failed. Loading mock teachers:", error);
-      setTeachers(getMockTeachers());
+      handleFirestoreError(error, OperationType.LIST, 'teachers');
     } finally {
       setLoading(false);
     }
@@ -73,77 +83,78 @@ export function TeacherManagement() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!selectedTeacher) return;
+
     try {
-      if (isEditing && selectedTeacher) {
-        const teacherDoc = doc(db, 'teachers', selectedTeacher.id);
-        await updateDoc(teacherDoc, {
-          fullName,
-          email,
-          phone,
-          assignedCourses,
-          status
-        });
+      setLoading(true);
+      const teacherId = selectedTeacher.id;
+
+      // Update User Profile
+      await updateDoc(doc(db, 'users', teacherId), {
+        fullName,
+        status
+      });
+
+      // Update Teacher Profile
+      const teacherProfileRef = doc(db, 'teachers', teacherId);
+      const profileSnap = await getDoc(teacherProfileRef);
+
+      const profileData: Partial<TeacherProfile> = {
+        userId: teacherId,
+        phone,
+        assignedCourses,
+        employeeNumber: selectedTeacher.profile?.employeeNumber || `EMP-${Math.floor(1000 + Math.random() * 9000)}`
+      };
+
+      if (profileSnap.exists()) {
+        await updateDoc(teacherProfileRef, profileData);
       } else {
-        await addDoc(collection(db, 'teachers'), {
-          fullName,
-          email,
-          phone,
-          assignedCourses,
-          status,
-          createdAt: serverTimestamp()
-        });
+        await setDoc(teacherProfileRef, profileData);
       }
+
       resetForm();
       setShowForm(false);
-      fetchTeachers();
+      fetchData();
     } catch (error) {
-      handleFirestoreError(error, isEditing ? OperationType.UPDATE : OperationType.CREATE, 'teachers');
+      handleFirestoreError(error, OperationType.UPDATE, 'teachers');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleEdit = (teacher: any) => {
     setSelectedTeacher(teacher);
-    setFullName(teacher.fullName || '');
-    setEmail(teacher.email);
-    setPhone(teacher.phone || '');
-    setAssignedCourses(teacher.assignedCourses || []);
-    setStatus(teacher.status || 'active');
+    setFullName(teacher.user.fullName || '');
+    setEmail(teacher.user.email);
+    setPhone(teacher.profile?.phone || '');
+    setAssignedCourses(teacher.profile?.assignedCourses || []);
+    setStatus(teacher.user.status || 'active');
     setIsEditing(true);
     setShowForm(true);
   };
 
-  const handleDelete = async (teacherId: string) => {
-    if (!confirm('Are you sure you want to permanently delete this teacher?')) return;
-    try {
-      await deleteDoc(doc(db, 'teachers', teacherId));
-      fetchTeachers();
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `teachers/${teacherId}`);
-    }
-  };
-
   const toggleStatus = async (teacher: any) => {
-    const nextStatus = teacher.status === 'active' ? 'inactive' : 'active';
+    const nextStatus = teacher.user.status === 'active' ? 'suspended' : 'active';
     try {
-      await updateDoc(doc(db, 'teachers', teacher.id), { status: nextStatus });
-      fetchTeachers();
+      await updateDoc(doc(db, 'users', teacher.id), { status: nextStatus });
+      fetchData();
     } catch (error) {
       console.error("Could not toggle status:", error);
     }
   };
 
-  const handleCourseSelection = (courseName: string) => {
+  const handleCourseSelection = (courseId: string) => {
     setAssignedCourses(prev => 
-      prev.includes(courseName) 
-        ? prev.filter(c => c !== courseName)
-        : [...prev, courseName]
+      prev.includes(courseId) 
+        ? prev.filter(c => c !== courseId)
+        : [...prev, courseId]
     );
   };
 
   const filteredTeachers = teachers.filter((t: any) => {
-    const matchesSearch = t.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          t.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
+    const matchesSearch = t.user.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          t.user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || t.user.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
@@ -152,11 +163,8 @@ export function TeacherManagement() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Teacher Management</h1>
-          <p className="text-gray-500 mt-1 font-medium text-sm">Manage faculty profiles, search assigned courses, and review operational status.</p>
+          <p className="text-gray-500 mt-1 font-medium text-sm">Manage faculty profiles, assigned courses, and review operational status.</p>
         </div>
-        <Button onClick={() => { resetForm(); setShowForm(true); }} className="gap-2 bg-black text-white hover:bg-gray-800">
-          <Plus className="w-4 h-4" /> Add Teacher
-        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-white p-4 border border-gray-100 rounded-2xl shadow-sm">
@@ -179,7 +187,7 @@ export function TeacherManagement() {
           >
             <option value="all">All Statuses</option>
             <option value="active">Active Only</option>
-            <option value="inactive">Inactive Only</option>
+            <option value="suspended">Suspended Only</option>
           </select>
         </div>
       </div>
@@ -200,7 +208,7 @@ export function TeacherManagement() {
               {loading ? (
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center">
-                    <div className="w-8 h-8 border-4 border-black border-t-transparent rounded-full animate-spin mx-auto" />
+                    <Loader2 className="w-8 h-8 animate-spin mx-auto text-gray-200" />
                   </td>
                 </tr>
               ) : filteredTeachers.length === 0 ? (
@@ -221,20 +229,20 @@ export function TeacherManagement() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center font-bold text-gray-600">
-                          {t.fullName?.charAt(0) || 'T'}
+                          {t.user.fullName?.charAt(0) || 'T'}
                         </div>
                         <div>
-                          <p className="font-semibold text-gray-900 text-sm">{t.fullName}</p>
-                          <p className="text-xs text-gray-500">{t.email}</p>
+                          <p className="font-semibold text-gray-900 text-sm">{t.user.fullName}</p>
+                          <p className="text-xs text-gray-500">{t.user.email}</p>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-wrap gap-1.5">
-                        {t.assignedCourses && t.assignedCourses.length > 0 ? (
-                          t.assignedCourses.map((c: string) => (
-                            <span key={c} className="text-[10px] bg-gray-100 font-bold px-2 py-0.5 rounded">
-                              {c}
+                        {t.profile?.assignedCourses && t.profile.assignedCourses.length > 0 ? (
+                          t.profile.assignedCourses.map((cId: string) => (
+                            <span key={cId} className="text-[10px] bg-gray-100 font-bold px-2 py-0.5 rounded">
+                              {courses.find(c => c.id === cId)?.title || cId}
                             </span>
                           ))
                         ) : (
@@ -243,24 +251,23 @@ export function TeacherManagement() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-xs font-semibold text-gray-600">
-                      <p className="flex items-center gap-1"><Mail className="w-3.5 h-3.5 opacity-60" /> {t.email}</p>
-                      <p className="flex items-center gap-1 mt-1"><Phone className="w-3.5 h-3.5 opacity-60" /> {t.phone || 'N/A'}</p>
+                      <p className="flex items-center gap-1"><Mail className="w-3.5 h-3.5 opacity-60" /> {t.user.email}</p>
+                      <p className="flex items-center gap-1 mt-1"><Phone className="w-3.5 h-3.5 opacity-60" /> {t.profile?.phone || 'N/A'}</p>
                     </td>
                     <td className="px-6 py-4">
                       <button 
                         onClick={() => toggleStatus(t)}
                         className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold transition-all ${
-                          t.status === 'active' ? 'bg-green-50 text-green-700 hover:bg-orange-50 hover:text-orange-700' : 'bg-red-50 text-red-700 hover:bg-green-50 hover:text-green-700'
+                          t.user.status === 'active' ? 'bg-green-50 text-green-700 hover:bg-orange-50 hover:text-orange-700' : 'bg-red-50 text-red-700 hover:bg-green-50 hover:text-green-700'
                         }`}
                       >
-                        {t.status === 'active' ? <CheckCircle className="w-3 h-3" /> : <ShieldAlert className="w-3 h-3" />}
-                        {t.status?.toUpperCase() || 'ACTIVE'}
+                        {t.user.status === 'active' ? <CheckCircle className="w-3 h-3" /> : <ShieldAlert className="w-3 h-3" />}
+                        {t.user.status?.toUpperCase() || 'ACTIVE'}
                       </button>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => handleEdit(t)} className="p-1.5 text-gray-400 hover:text-black hover:bg-gray-50 rounded-lg"><Edit className="w-4 h-4" /></button>
-                        <button onClick={() => handleDelete(t.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </td>
                   </motion.tr>
@@ -282,7 +289,7 @@ export function TeacherManagement() {
               className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 md:p-8"
             >
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold tracking-tight text-gray-900">{isEditing ? 'Edit Teacher Details' : 'Register New Faculty'}</h2>
+                <h2 className="text-xl font-bold tracking-tight text-gray-900">Edit Teacher Details</h2>
                 <button onClick={resetForm} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
               </div>
 
@@ -300,13 +307,12 @@ export function TeacherManagement() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Email Address</label>
+                    <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Email Address (Read-only)</label>
                     <input 
                       type="email" 
-                      required 
+                      readOnly 
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm"
+                      className="w-full px-3 py-2 border border-gray-100 bg-gray-50 rounded-xl focus:outline-none text-sm text-gray-500"
                     />
                   </div>
                   <div>
@@ -323,23 +329,19 @@ export function TeacherManagement() {
                 <div>
                   <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Assign Courses (Select multiple)</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-gray-50 rounded-2xl border border-gray-100 max-h-36 overflow-y-auto">
-                    {[
-                      'Advanced Mathematics',
-                      'Physics 101',
-                      'Introduction to Programming'
-                    ].map(courseName => (
+                    {courses.map(course => (
                       <div 
-                        key={courseName}
-                        onClick={() => handleCourseSelection(courseName)}
+                        key={course.id}
+                        onClick={() => handleCourseSelection(course.id)}
                         className={`p-2 border rounded-xl flex items-center justify-between cursor-pointer transition-all ${
-                          assignedCourses.includes(courseName) ? 'border-black bg-white shadow-sm' : 'border-transparent hover:bg-gray-100/50'
+                          assignedCourses.includes(course.id) ? 'border-black bg-white shadow-sm' : 'border-transparent hover:bg-gray-100/50'
                         }`}
                       >
-                        <span className="text-xs font-bold text-gray-800">{courseName}</span>
+                        <span className="text-xs font-bold text-gray-800">{course.title}</span>
                         <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                          assignedCourses.includes(courseName) ? 'border-black bg-black text-white' : 'border-gray-300'
+                          assignedCourses.includes(course.id) ? 'border-black bg-black text-white' : 'border-gray-300'
                         }`}>
-                          {assignedCourses.includes(courseName) && <span className="text-[9px] font-black">✓</span>}
+                          {assignedCourses.includes(course.id) && <span className="text-[9px] font-black text-white">✓</span>}
                         </div>
                       </div>
                     ))}
@@ -354,14 +356,14 @@ export function TeacherManagement() {
                     className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm"
                   >
                     <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
+                    <option value="suspended">Suspended</option>
                   </select>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-6">
                   <Button variant="outline" type="button" onClick={resetForm}>Cancel</Button>
-                  <Button type="submit" className="bg-black text-white hover:bg-gray-800">
-                    {isEditing ? 'Save Changes' : 'Register Faculty'}
+                  <Button type="submit" disabled={loading} className="bg-black text-white hover:bg-gray-800">
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Changes'}
                   </Button>
                 </div>
               </form>

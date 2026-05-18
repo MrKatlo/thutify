@@ -94,7 +94,7 @@ export function ContentLibrary() {
             date: new Date().toISOString().split('T')[0],
             category: uploadCategory,
             downloadUrl: downloadUrl,
-            uploadedBy: profile.name || 'Instructor'
+            uploadedBy: profile.fullName || 'Instructor'
           });
 
           alert("Material successfully loaded to classroom cloud storage!");

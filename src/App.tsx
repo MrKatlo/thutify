@@ -5,25 +5,17 @@ import { Sidebar } from './components/layout/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { CourseList } from './components/courses/CourseList';
 import { Announcements } from './components/Announcements';
-import { Assessment } from './components/Assessment.tsx';
 import { Financials } from './components/Financials';
 import { StudentManagement } from './components/StudentManagement';
+import { UserManagement } from './components/UserManagement';
 import { Reports } from './components/Reports';
-import { TeacherManagement } from './components/TeacherManagement';
-import { Attendance } from './components/Attendance';
-import { Certificates } from './components/Certificates';
-import { SystemSettings } from './components/SystemSettings';
-import { ContentManagement } from './components/ContentManagement';
-import { SystemMonitoring } from './components/SystemMonitoring';
-import { LiveClasses } from './components/LiveClasses';
-import { ScheduleCalendar } from './components/ScheduleCalendar';
-import { ContentLibrary } from './components/ContentLibrary';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, AlertCircle, LogOut } from 'lucide-react';
 import { Button } from './components/ui/Card';
+import { logout } from './lib/firebase';
 
 export default function App() {
-  const { user, profile, loading, isMockMode } = useAuth();
+  const { user, profile, loading, isAuthenticated, isActive, isAdmin, isTeacher } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -43,6 +35,42 @@ export default function App() {
     return <AuthPage />;
   }
 
+  // Institutional Check: User is logged in but has no institutional profile
+  if (!profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#fdfdfc] p-6 text-center">
+        <div className="max-w-md">
+          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h1 className="text-2xl font-bold mb-2">Unauthorized Access</h1>
+          <p className="text-gray-500 mb-8">Your account is not associated with this institution. Please contact your administrator for an invite.</p>
+          <Button onClick={logout} className="gap-2">
+            <LogOut className="w-4 h-4" /> Sign Out
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Suspended Check
+  if (profile.status === 'suspended') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#fdfdfc] p-6 text-center">
+        <div className="max-w-md">
+          <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h1 className="text-2xl font-bold mb-2">Account Suspended</h1>
+          <p className="text-gray-500 mb-8">Your institutional access has been suspended. Please contact the administrative office for more information.</p>
+          <Button onClick={logout} className="gap-2">
+            <LogOut className="w-4 h-4" /> Sign Out
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
@@ -51,32 +79,14 @@ export default function App() {
         return <CourseList />;
       case 'announcements':
         return <Announcements />;
-      case 'assessment':
-        return <Assessment />;
       case 'financials':
-        return <Financials />;
+        return isAdmin ? <Financials /> : <Dashboard setActiveTab={setActiveTab} />;
       case 'students':
-        return <StudentManagement />;
+        return (isAdmin || isTeacher) ? <StudentManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+      case 'users':
+        return isAdmin ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
       case 'reports':
-        return <Reports />;
-      case 'teachers':
-        return <TeacherManagement />;
-      case 'attendance':
-        return <Attendance />;
-      case 'certificates':
-        return <Certificates />;
-      case 'content':
-        return <ContentManagement />;
-      case 'settings':
-        return <SystemSettings />;
-      case 'monitoring':
-        return <SystemMonitoring />;
-      case 'liveclasses':
-        return <LiveClasses />;
-      case 'calendar':
-        return <ScheduleCalendar />;
-      case 'library':
-        return <ContentLibrary />;
+        return isAdmin ? <Reports /> : <Dashboard setActiveTab={setActiveTab} />;
       default:
         return (
           <div className="p-8 flex items-center justify-center min-h-[50vh]">
@@ -91,22 +101,6 @@ export default function App() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[#fafafa]">
-      {isMockMode && (
-        <div className="bg-amber-50 border-b border-amber-200 text-amber-800 px-4 py-2.5 text-xs md:text-sm font-semibold flex items-center justify-between gap-4 z-50">
-          <div className="flex items-center gap-2">
-            <span className="text-amber-500">⚠️</span>
-            <span>
-              <strong>Firestore Permission Denied</strong>. Running in local mock mode. Please copy the rules in <code>firestore.rules</code> and publish them in your **Firebase Console** under Firestore {"->"} Rules.
-            </span>
-          </div>
-          <button 
-            onClick={() => alert("1. Open your Firebase Console.\n2. Navigate to Firestore Database -> Rules.\n3. Copy the entire contents of your local 'firestore.rules' file.\n4. Paste them into the Firebase editor and click 'Publish'.\n\nOnce done, refresh this page and real roles will work perfectly!")}
-            className="text-[10px] bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-1 rounded transition-all shrink-0 cursor-pointer"
-          >
-            How to fix?
-          </button>
-        </div>
-      )}
       <div className="flex flex-1 min-h-0">
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
         <main className="flex-1 overflow-y-auto w-full flex flex-col">

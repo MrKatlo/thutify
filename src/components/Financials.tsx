@@ -262,7 +262,7 @@ export function Financials() {
   });
 
   if (profile?.role === 'student') {
-    const studentPayments = payments.filter(p => p.studentId === profile.uid || p.studentName === profile.name);
+    const studentPayments = payments.filter(p => p.studentId === profile.uid || p.studentName === profile.fullName);
     const studentPaid = studentPayments.reduce((sum, p) => sum + p.amountPaid, 0);
     const studentTotal = studentPayments.reduce((sum, p) => sum + p.totalFee, 0);
     const studentBalance = studentTotal - studentPaid;

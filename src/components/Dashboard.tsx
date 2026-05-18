@@ -56,7 +56,8 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
     try {
       if (profile.role === 'student') {
         // --- STUDENT DYNAMIC DASHBOARD ---
-        const [coursesSnap, attendanceSnap, submissionsSnap, assignmentsSnap, liveClassesSnap, announcementsSnap, paymentsSnap] = await Promise.all([
+        const [enrollSnap, coursesSnap, attendanceSnap, submissionsSnap, assignmentsSnap, liveClassesSnap, announcementsSnap, paymentsSnap] = await Promise.all([
+          getDocs(query(collection(db, 'enrollments'), where('studentId', '==', profile.uid), where('status', '==', 'active'))),
           getDocs(collection(db, 'courses')),
           getDocs(query(collection(db, 'attendance'), where('studentId', '==', profile.uid))),
           getDocs(query(collection(db, 'submissions'), where('studentId', '==', profile.uid))),
@@ -66,10 +67,9 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
           getDocs(query(collection(db, 'payments'), where('studentId', '==', profile.uid)))
         ]);
 
-        // Enrolled courses list
+        const activeCourseIds = enrollSnap.docs.map(d => d.data().courseId);
         const allCourses = coursesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-        const enrolledTitles = profile.enrolledCourses || [];
-        const enrolled = allCourses.filter(c => enrolledTitles.includes(c.title));
+        const enrolled = allCourses.filter(c => activeCourseIds.includes(c.id));
         setEnrolledCoursesList(enrolled);
 
         // Enrolled count
@@ -93,10 +93,10 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
         const paymentStatus = balance === 0 ? 'paid' : studentPaid > 0 ? 'partial' : 'unpaid';
 
         setStudentStats({
-          enrolledCount: enrolledCount || 3,
-          completedCount: completedCount || 0,
+          enrolledCount: enrolledCount,
+          completedCount: completedCount,
           attendanceRate,
-          balance: balance || 1000,
+          balance: balance,
           paymentStatus
         });
 
@@ -104,19 +104,19 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
         const submittedAssignIds = submissionsSnap.docs.map(d => d.data().assignmentId);
         const activeAssignments = assignmentsSnap.docs
           .map(d => ({ id: d.id, ...d.data() } as any))
-          .filter(a => enrolledTitles.includes(a.courseName) && !submittedAssignIds.includes(a.id));
+          .filter(a => activeCourseIds.includes(a.courseId) && !submittedAssignIds.includes(a.id));
         setUpcomingAssignments(activeAssignments.slice(0, 3));
 
         // Upcoming live classes
         const classes = liveClassesSnap.docs
           .map(d => ({ id: d.id, ...d.data() } as any))
-          .filter(lc => enrolledTitles.includes(lc.courseName) || lc.courseId === 'all');
+          .filter(lc => activeCourseIds.includes(lc.courseId) || lc.courseId === 'all');
         setUpcomingClasses(classes.slice(0, 3));
 
         // Broadcast announcements
         const anns = announcementsSnap.docs
           .map(d => ({ id: d.id, ...d.data() } as any))
-          .filter(ann => ann.targetRole === 'student' || ann.targetRole === 'all' || enrolledTitles.includes(ann.courseName));
+          .filter(ann => ann.targetRole === 'student' || ann.targetRole === 'all' || activeCourseIds.includes(ann.courseId));
         setAnnouncements(anns.slice(0, 3));
 
         // Recent completed lessons or actions
@@ -132,17 +132,18 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
 
       } else {
         // --- ADMIN & TEACHER DASHBOARD ---
-        const [studentsSnap, teachersSnap, coursesSnap, paymentsSnap, liveClassesSnap, announcementsSnap] = await Promise.all([
-          getDocs(collection(db, 'students')),
-          getDocs(collection(db, 'teachers')),
+        const [usersSnap, coursesSnap, paymentsSnap, liveClassesSnap, announcementsSnap, enrollmentsSnap] = await Promise.all([
+          getDocs(collection(db, 'users')),
           getDocs(collection(db, 'courses')),
           getDocs(collection(db, 'payments')),
           getDocs(collection(db, 'liveClasses')),
-          getDocs(collection(db, 'announcements'))
+          getDocs(collection(db, 'announcements')),
+          getDocs(collection(db, 'enrollments'))
         ]);
 
-        const studentsCount = studentsSnap.size;
-        const teachersCount = teachersSnap.size;
+        const allUsers = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() } as any));
+        const studentsCount = allUsers.filter(u => u.role === 'student').length;
+        const teachersCount = allUsers.filter(u => u.role === 'teacher').length;
         const coursesCount = coursesSnap.size;
 
         let totalRevenue = 0;
@@ -150,31 +151,42 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
           totalRevenue += Number(doc.data().amountPaid || 0);
         });
 
+        // Compute unpaid count using actual student balances:
+        const enrollments = enrollmentsSnap.docs.map(d => d.data());
+        const paymentsList = paymentsSnap.docs.map(d => d.data());
+        const allCourses = coursesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+
+        const studentIds = Array.from(new Set(enrollments.map(e => e.studentId)));
         let unpaidCount = 0;
-        studentsSnap.forEach((doc) => {
-          if (doc.data().paymentStatus === 'unpaid') {
+        studentIds.forEach(sid => {
+          const studentEnrollments = enrollments.filter(e => e.studentId === sid);
+          const expected = studentEnrollments.reduce((sum, e) => {
+            const course = allCourses.find(c => c.id === e.courseId);
+            return sum + Number(course?.fee || 1000);
+          }, 0);
+          const paid = paymentsList.filter(p => p.studentId === sid).reduce((sum, p) => sum + Number(p.amountPaid || 0), 0);
+          if (expected - paid > 0) {
             unpaidCount += 1;
           }
         });
 
         setStats({
-          studentsCount: studentsCount || 156,
-          teachersCount: teachersCount || 12,
-          coursesCount: coursesCount || 6,
-          totalRevenue: totalRevenue || 12450,
-          unpaidCount: unpaidCount || 3
+          studentsCount: studentsCount,
+          teachersCount: teachersCount,
+          coursesCount: coursesCount,
+          totalRevenue: totalRevenue,
+          unpaidCount: unpaidCount
         });
 
         // Compute teacher stats dynamically
-        const fetchedCourses = coursesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-        const myCourses = fetchedCourses.filter(c => c.teacherId === profile.uid || c.authorId === profile.uid);
+        const myCourses = allCourses.filter(c => c.teacherId === profile.uid || c.authorId === profile.uid);
         const myCoursesIds = myCourses.map(c => c.id);
 
-        const fetchedStudents = studentsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-        const myStudentsCount = fetchedStudents.filter(s => 
-          myCoursesIds.includes(s.courseId) || 
-          s.enrolledCourses?.some((cid: string) => myCoursesIds.includes(cid))
-        ).length;
+        let myStudentsCount = 0;
+        if (myCoursesIds.length > 0) {
+          const myEnrollments = enrollments.filter(e => myCoursesIds.includes(e.courseId));
+          myStudentsCount = Array.from(new Set(myEnrollments.map(e => e.studentId))).length;
+        }
 
         let myLessonsCount = 0;
         myCourses.forEach(c => {
@@ -184,9 +196,9 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
         });
 
         setTeacherStats({
-          coursesCount: myCourses.length || 2,
-          studentsCount: myStudentsCount || 24,
-          lessonsCount: myLessonsCount || 8,
+          coursesCount: myCourses.length,
+          studentsCount: myStudentsCount,
+          lessonsCount: myLessonsCount,
           avgProgress: 82
         });
 
@@ -200,12 +212,11 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
 
         // Recent activities
         const activities: any[] = [];
-        studentsSnap.docs.slice(0, 2).forEach((doc) => {
-          const data = doc.data();
+        allUsers.filter(u => u.role === 'student').slice(0, 2).forEach((data) => {
           activities.push({
             type: 'student',
-            title: `Student Enrolled: ${data.fullName || data.name}`,
-            meta: `${data.courseId || 'No Course'} • Active`,
+            title: `Student Profile: ${data.fullName}`,
+            meta: `${data.email} • Active`,
             date: 'Recent'
           });
         });
@@ -267,19 +278,10 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
         <div>
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-gray-900">
-            Welcome back, {profile?.name?.split(' ')[0] || 'User'}
+            Welcome back, {profile?.fullName?.split(' ')[0] || 'User'}
           </h1>
           <p className="text-gray-500 mt-1 font-semibold text-sm capitalize">Role: {profile?.role}</p>
         </div>
-        {profile?.role === 'admin' && (
-          <button 
-            onClick={() => setActiveTab('students')}
-            className="bg-black text-white px-5 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-gray-800 transition-all active:scale-95 w-full md:w-auto text-sm shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            Add Student
-          </button>
-        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-10">

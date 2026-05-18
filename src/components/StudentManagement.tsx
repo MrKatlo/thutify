@@ -1,256 +1,224 @@
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
-import { collection, query, getDocs, addDoc, serverTimestamp, orderBy, where, deleteDoc, doc, updateDoc, QueryDocumentSnapshot } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  getDocs, 
+  addDoc, 
+  serverTimestamp, 
+  orderBy, 
+  where, 
+  deleteDoc, 
+  doc, 
+  updateDoc, 
+  QueryDocumentSnapshot,
+  getDoc,
+  writeBatch
+} from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { Button, Card } from './ui/Card';
-import { Search, Plus, Mail, Phone, Trash2, Edit, X, ShieldAlert, CheckCircle, Award, Activity, GraduationCap } from 'lucide-react';
+import { 
+  Search, 
+  Plus, 
+  Mail, 
+  Phone, 
+  Trash2, 
+  Edit, 
+  X, 
+  ShieldAlert, 
+  CheckCircle, 
+  GraduationCap, 
+  BookOpen, 
+  Loader2, 
+  Filter,
+  UserPlus,
+  ArrowRight,
+  DollarSign
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { UserProfile, StudentProfile, Enrollment, Course } from '../types';
+import { format } from 'date-fns';
 
 export function StudentManagement() {
   const { profile } = useAuth();
   
   // Data lists
-  const [students, setStudents] = useState<any[]>([]);
-  const [courses, setCourses] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]); // Combined view
+  const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
-  const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'partial' | 'unpaid'>('all');
   const [courseFilter, setCourseFilter] = useState<string>('all');
-  const [progressFilter, setProgressFilter] = useState<'all' | 'low' | 'high'>('all'); // Taught Student progress tracking!
 
-  // Roster details modal
-  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [showStudentDetailModal, setShowStudentDetailModal] = useState<any | null>(null);
+  // Modal states
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [enrollingUser, setEnrollingUser] = useState<UserProfile | null>(null);
+  const [availableStudents, setAvailableStudents] = useState<UserProfile[]>([]);
 
-  // Form Fields (Admins Only)
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [courseId, setCourseId] = useState('');
-  const [status, setStatus] = useState<'active' | 'suspended'>('active');
-  const [paymentStatus, setPaymentStatus] = useState<'paid' | 'partial' | 'unpaid'>('unpaid');
-  const [totalFee, setTotalFee] = useState<number>(1000);
-  const [amountPaid, setAmountPaid] = useState<number>(0);
+  // Enrollment Form State
+  const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [studentNumber, setStudentNumber] = useState('');
 
   useEffect(() => {
-    fetchStudents();
-    fetchCourses();
+    fetchData();
   }, [profile]);
 
-  const getMockStudents = () => [
-    { id: 's1', fullName: 'Alex Johnson', email: 'alex@example.com', phone: '+1 234 567 890', courseId: 'Advanced Mathematics', status: 'active', paymentStatus: 'paid', totalFee: 1000, amountPaid: 1000, balance: 0, enrollmentDate: new Date(), completedLessons: ['l1', 'l2'], progress: 60 },
-    { id: 's2', fullName: 'Maria Garcia', email: 'maria@example.com', phone: '+1 987 654 321', courseId: 'Physics 101', status: 'active', paymentStatus: 'partial', totalFee: 1000, amountPaid: 400, balance: 600, enrollmentDate: new Date(), completedLessons: ['l1'], progress: 30 },
-    { id: 's3', fullName: 'James Wilson', email: 'james@example.com', phone: '+1 555 444 333', courseId: 'Introduction to Programming', status: 'suspended', paymentStatus: 'unpaid', totalFee: 1200, amountPaid: 0, balance: 1200, enrollmentDate: new Date(), completedLessons: [], progress: 0 },
-  ];
-
-  const fetchCourses = async () => {
-    try {
-      const snap = await getDocs(collection(db, 'courses'));
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setCourses(list);
-    } catch (err) {
-      console.warn("Could not load courses collection for student picker:", err);
-    }
-  };
-
-  const fetchStudents = async () => {
+  const fetchData = async () => {
+    if (!profile) return;
     setLoading(true);
     try {
-      const q = query(collection(db, 'students'), orderBy('enrollmentDate', 'desc'));
-      const snapshot = await getDocs(q);
-      const fetched = snapshot.docs.map((doc: QueryDocumentSnapshot) => ({
-        id: doc.id,
-        ...doc.data()
+      // 1. Fetch Courses
+      const courseSnap = await getDocs(collection(db, 'courses'));
+      const courseList = courseSnap.docs.map(d => ({ id: d.id, ...d.data() } as Course));
+      setCourses(courseList);
+
+      // 2. Fetch Institutional Students (users with role 'student')
+      const userSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
+      const studentUsers = userSnap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile));
+      setAvailableStudents(studentUsers);
+
+      // 3. Fetch Enrollments and Profiles
+      let enrollments: Enrollment[] = [];
+      if (profile.role === 'admin') {
+        const enrollSnap = await getDocs(collection(db, 'enrollments'));
+        enrollments = enrollSnap.docs.map(d => ({ id: d.id, ...d.data() } as Enrollment));
+      } else if (profile.role === 'teacher') {
+        // Teachers see students in their courses
+        const myCoursesSnap = await getDocs(query(collection(db, 'courses'), where('teacherId', '==', profile.uid)));
+        const myCourseIds = myCoursesSnap.docs.map(d => d.id);
+        
+        if (myCourseIds.length > 0) {
+          const enrollSnap = await getDocs(query(collection(db, 'enrollments'), where('courseId', 'in', myCourseIds)));
+          enrollments = enrollSnap.docs.map(d => ({ id: d.id, ...d.data() } as Enrollment));
+        }
+      }
+
+      // 4. Join Data for the list
+      const combined = await Promise.all(enrollments.map(async (enroll) => {
+        const studentUser = studentUsers.find(u => u.uid === enroll.studentId);
+        const course = courseList.find(c => c.id === enroll.courseId);
+        
+        // Fetch student-specific profile info
+        const profileSnap = await getDoc(doc(db, 'students', enroll.studentId));
+        const studentInfo = profileSnap.exists() ? profileSnap.data() as StudentProfile : null;
+
+        return {
+          id: enroll.id,
+          enrollment: enroll,
+          user: studentUser,
+          course: course,
+          profile: studentInfo
+        };
       }));
-      setStudents(fetched.length > 0 ? fetched : getMockStudents());
+
+      setStudents(combined.filter(s => s.user)); // Filter out any deleted users
     } catch (error) {
-      console.warn("Firestore students fetch failed. Loading mock list:", error);
-      setStudents(getMockStudents());
+      handleFirestoreError(error, OperationType.LIST, 'enrollments');
     } finally {
       setLoading(false);
     }
   };
 
-  const resetForm = () => {
-    setFullName('');
-    setEmail('');
-    setPhone('');
-    setCourseId('');
-    setStatus('active');
-    setPaymentStatus('unpaid');
-    setTotalFee(1000);
-    setAmountPaid(0);
-    setIsEditing(false);
-    setSelectedStudent(null);
-  };
-
-  const handleSubmit = async (e: FormEvent) => {
+  const handleEnroll = async (e: FormEvent) => {
     e.preventDefault();
-    const balance = Number(totalFee) - Number(amountPaid);
-    let finalPaymentStatus = paymentStatus;
-    if (Number(amountPaid) >= Number(totalFee)) {
-      finalPaymentStatus = 'paid';
-    } else if (Number(amountPaid) > 0) {
-      finalPaymentStatus = 'partial';
-    } else {
-      finalPaymentStatus = 'unpaid';
-    }
+    if (!enrollingUser || !selectedCourseId) return;
 
     try {
-      if (isEditing && selectedStudent) {
-        await updateDoc(doc(db, 'students', selectedStudent.id), {
-          fullName,
-          email,
-          phone,
-          courseId,
-          status,
-          paymentStatus: finalPaymentStatus,
-          totalFee: Number(totalFee),
-          amountPaid: Number(amountPaid),
-          balance: Number(balance)
-        });
-      } else {
-        await addDoc(collection(db, 'students'), {
-          fullName,
-          email,
-          phone,
-          courseId,
-          status,
-          paymentStatus: finalPaymentStatus,
-          totalFee: Number(totalFee),
-          amountPaid: Number(amountPaid),
-          balance: Number(balance),
-          progress: 0,
-          completedLessons: [],
-          enrollmentDate: serverTimestamp()
+      setLoading(true);
+      const batch = writeBatch(db);
+
+      // 1. Create Enrollment
+      const enrollRef = doc(collection(db, 'enrollments'));
+      batch.set(enrollRef, {
+        studentId: enrollingUser.uid,
+        courseId: selectedCourseId,
+        status: 'active',
+        enrolledAt: serverTimestamp()
+      });
+
+      // 2. Ensure Student Profile exists
+      const studentProfileRef = doc(db, 'students', enrollingUser.uid);
+      const profileSnap = await getDoc(studentProfileRef);
+      
+      if (!profileSnap.exists()) {
+        batch.set(studentProfileRef, {
+          userId: enrollingUser.uid,
+          studentNumber: studentNumber || `STU-${Math.floor(1000 + Math.random() * 9000)}`,
+          phone: '',
+          paymentStatus: 'unpaid',
+          totalFee: courses.find(c => c.id === selectedCourseId)?.fee || 0,
+          amountPaid: 0,
+          balance: courses.find(c => c.id === selectedCourseId)?.fee || 0,
+          academicStatus: 'active'
         });
       }
-      resetForm();
-      setShowForm(false);
-      fetchStudents();
+
+      await batch.commit();
+      setShowEnrollModal(false);
+      setEnrollingUser(null);
+      setSelectedCourseId('');
+      fetchData();
     } catch (error) {
-      handleFirestoreError(error, isEditing ? OperationType.UPDATE : OperationType.CREATE, 'students');
+      handleFirestoreError(error, OperationType.CREATE, 'enrollments');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleEdit = (student: any) => {
-    setSelectedStudent(student);
-    setFullName(student.fullName || '');
-    setEmail(student.email);
-    setPhone(student.phone || '');
-    setCourseId(student.courseId || '');
-    setStatus(student.status || 'active');
-    setPaymentStatus(student.paymentStatus || 'unpaid');
-    setTotalFee(student.totalFee || 1000);
-    setAmountPaid(student.amountPaid || 0);
-    setIsEditing(true);
-    setShowForm(true);
-  };
-
-  const handleDelete = async (studentId: string) => {
-    if (!confirm('Are you sure you want to permanently delete this student?')) return;
+  const handleDrop = async (enrollId: string) => {
+    if (!confirm('Are you sure you want to drop this student from the course?')) return;
     try {
-      await deleteDoc(doc(db, 'students', studentId));
-      fetchStudents();
+      await deleteDoc(doc(db, 'enrollments', enrollId));
+      fetchData();
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `students/${studentId}`);
+      handleFirestoreError(error, OperationType.DELETE, `enrollments/${enrollId}`);
     }
   };
 
-  const toggleStatus = async (student: any) => {
-    const nextStatus = student.status === 'active' ? 'suspended' : 'active';
-    try {
-      await updateDoc(doc(db, 'students', student.id), { status: nextStatus });
-      fetchStudents();
-    } catch (error) {
-      console.error("Could not toggle status:", error);
-    }
-  };
-
-  const filteredStudents = students.filter((s: any) => {
-    const matchesSearch = (s.fullName || s.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          s.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || s.status === statusFilter;
-    const matchesPayment = paymentFilter === 'all' || s.paymentStatus === paymentFilter;
-    const matchesCourse = courseFilter === 'all' || s.courseId === courseFilter;
-    
-    // Progress track filter
-    const progressVal = s.progress || 0;
-    const matchesProgress = progressFilter === 'all' || 
-                            (progressFilter === 'low' && progressVal < 50) || 
-                            (progressFilter === 'high' && progressVal >= 50);
-
-    return matchesSearch && matchesStatus && matchesPayment && matchesCourse && matchesProgress;
+  const filteredStudents = students.filter(s => {
+    const matchesSearch = s.user.fullName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          s.user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCourse = courseFilter === 'all' || s.course.id === courseFilter;
+    return matchesSearch && matchesCourse;
   });
 
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-gray-900">Student Profiles</h1>
-          <p className="text-gray-500 mt-1 font-medium text-sm">Manage enrollments, track learning progress, and review student details.</p>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Student Enrollment</h1>
+          <p className="text-gray-500 mt-1 font-medium text-sm">
+            {profile?.role === 'admin' ? 'Manage institutional enrollments and academic records.' : 'Track students enrolled in your assigned courses.'}
+          </p>
         </div>
         {profile?.role === 'admin' && (
-          <Button onClick={() => { resetForm(); setShowForm(true); }} className="gap-2 bg-black text-white hover:bg-gray-800">
-            <Plus className="w-4 h-4" /> Add Student
+          <Button onClick={() => setShowEnrollModal(true)} className="gap-2 bg-black text-white hover:bg-gray-800">
+            <UserPlus className="w-4 h-4" /> Enroll Student
           </Button>
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white p-4 border border-gray-100 rounded-2xl shadow-sm">
-        <div className="relative">
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input 
             type="text"
-            placeholder="Search student details..."
+            placeholder="Search students..."
             value={searchTerm}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black/5"
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none shadow-sm"
           />
         </div>
-
-        <div>
-          <select 
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none"
-          >
-            <option value="all">All Statuses</option>
-            <option value="active">Active Only</option>
-            <option value="suspended">Suspended Only</option>
-          </select>
-        </div>
-
-        <div>
-          <select 
-            value={progressFilter}
-            onChange={(e) => setProgressFilter(e.target.value as any)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none"
-          >
-            <option value="all">All Progress Levels</option>
-            <option value="low">Under 50% Complete</option>
-            <option value="high">50% and Above Complete</option>
-          </select>
-        </div>
-
-        <div>
+        <div className="flex items-center gap-2 bg-white px-3 py-1 border border-gray-100 rounded-xl shadow-sm">
+          <Filter className="w-4 h-4 text-gray-400" />
           <select 
             value={courseFilter}
             onChange={(e) => setCourseFilter(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none"
+            className="bg-transparent border-none text-sm font-bold text-gray-600 focus:ring-0 outline-none"
           >
-            <option value="all">All Course Subjects</option>
-            {courses.map(c => (
-              <option key={c.id} value={c.title}>{c.title}</option>
-            ))}
-            <option value="Advanced Mathematics">Advanced Mathematics</option>
-            <option value="Physics 101">Physics 101</option>
-            <option value="Introduction to Programming">Introduction to Programming</option>
+            <option value="all">All Courses</option>
+            {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
           </select>
         </div>
       </div>
@@ -261,282 +229,153 @@ export function StudentManagement() {
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100">
                 <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Student</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Course Subject</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Lesson Progress</th>
-                {profile?.role === 'admin' && (
-                  <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Tuition Ledger</th>
-                )}
-                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Status</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Enrolled Course</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Academic Status</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Financials</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
-                    <div className="w-8 h-8 border-4 border-black border-t-transparent rounded-full animate-spin mx-auto" />
-                  </td>
-                </tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-gray-200" /></td></tr>
               ) : filteredStudents.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400 font-medium italic">
-                    No matching student profiles found.
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-gray-400 font-medium italic">No enrollments found.</td></tr>
+              ) : filteredStudents.map((s) => (
+                <tr key={s.id} className="hover:bg-gray-50/50 transition-colors group">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-600">
+                        {s.user.fullName?.[0]}
+                      </div>
+                      <div>
+                        <p className="font-bold text-gray-900">{s.user.fullName}</p>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">#{s.profile?.studentNumber || 'N/A'}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="w-3.5 h-3.5 text-gray-400" />
+                      <span className="text-sm font-medium text-gray-700">{s.course?.title}</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase mt-1">Joined {s.enrollment.enrolledAt?.toDate ? format(s.enrollment.enrolledAt.toDate(), 'MMM dd, yyyy') : 'Recently'}</p>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                      s.profile?.academicStatus === 'active' ? 'bg-green-50 text-green-600 border-green-100' :
+                      s.profile?.academicStatus === 'probation' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                      'bg-gray-50 text-gray-600 border-gray-100'
+                    }`}>
+                      {s.profile?.academicStatus || 'active'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-1.5 font-bold text-gray-900 text-sm">
+                      <DollarSign className="w-3.5 h-3.5 text-gray-400" />
+                      {s.profile?.balance > 0 ? (
+                        <span className="text-red-500">${s.profile.balance.toLocaleString()} Owed</span>
+                      ) : (
+                        <span className="text-green-600">Paid Full</span>
+                      )}
+                    </div>
+                    <div className="w-24 h-1 bg-gray-100 rounded-full mt-2 overflow-hidden">
+                      <div 
+                        className="h-full bg-black transition-all" 
+                        style={{ width: `${(s.profile?.amountPaid / s.profile?.totalFee) * 100 || 0}%` }}
+                      />
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    {profile?.role === 'admin' && (
+                      <button onClick={() => handleDrop(s.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
-              ) : (
-                filteredStudents.map((s, idx) => (
-                  <motion.tr 
-                    key={s.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.03 }}
-                    className="hover:bg-gray-50/50 transition-colors cursor-pointer"
-                    onClick={() => setShowStudentDetailModal(s)}
-                  >
-                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                      <div 
-                        onClick={() => setShowStudentDetailModal(s)}
-                        className="flex items-center gap-3 cursor-pointer"
-                      >
-                        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center font-bold text-gray-600">
-                          {s.fullName?.charAt(0) || 'S'}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900 text-sm">{s.fullName}</p>
-                          <p className="text-xs text-gray-500">{s.email}</p>
-                          <p className="text-xs text-gray-400">{s.phone || 'No Phone'}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-bold text-gray-900">{s.courseId || 'Unassigned'}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 bg-gray-100 rounded-full h-1.5">
-                          <div className="bg-black h-1.5 rounded-full" style={{ width: `${s.progress || 0}%` }}></div>
-                        </div>
-                        <span className="text-xs font-bold text-gray-700">{s.progress || 0}%</span>
-                      </div>
-                    </td>
-                    {profile?.role === 'admin' && (
-                      <td className="px-6 py-4 text-xs font-semibold text-gray-600">
-                        <p>Total: ${s.totalFee || 1000}</p>
-                        <p className="text-green-600">Paid: ${s.amountPaid || 0}</p>
-                        <p className="text-red-500">Balance: ${s.balance !== undefined ? s.balance : (s.totalFee - s.amountPaid)}</p>
-                      </td>
-                    )}
-                    <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                      <button 
-                        onClick={() => profile?.role === 'admin' ? toggleStatus(s) : null}
-                        disabled={profile?.role !== 'admin'}
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold transition-all ${
-                          s.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                        }`}
-                      >
-                        {s.status === 'active' ? <CheckCircle className="w-3 h-3" /> : <ShieldAlert className="w-3 h-3" />}
-                        {s.status?.toUpperCase() || 'ACTIVE'}
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-2">
-                        {profile?.role === 'admin' ? (
-                          <>
-                            <button onClick={() => handleEdit(s)} className="p-1.5 text-gray-400 hover:text-black hover:bg-gray-50 rounded-lg"><Edit className="w-4 h-4" /></button>
-                            <button onClick={() => handleDelete(s.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                          </>
-                        ) : (
-                          <Button 
-                            onClick={() => setShowStudentDetailModal(s)}
-                            className="text-xs py-1 px-3 bg-gray-50 text-black border hover:bg-gray-100"
-                          >
-                            View Progress
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Student Details Slide-over Detail Modal */}
+      {/* Enrollment Modal */}
       <AnimatePresence>
-        {showStudentDetailModal && (
+        {showEnrollModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div onClick={() => setShowStudentDetailModal(null)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-bold tracking-tight text-gray-900">Student Profile Summary</h3>
-                <button onClick={() => setShowStudentDetailModal(null)} className="p-2 hover:bg-gray-100 rounded-xl"><X className="w-5 h-5" /></button>
-              </div>
-
-              <div className="space-y-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-black text-white rounded-2xl flex items-center justify-center font-extrabold text-lg shadow-xl shadow-black/10">
-                    {showStudentDetailModal.fullName?.charAt(0) || 'S'}
-                  </div>
-                  <div>
-                    <h4 className="font-extrabold text-gray-950">{showStudentDetailModal.fullName}</h4>
-                    <p className="text-xs text-gray-500 font-semibold mt-0.5">{showStudentDetailModal.email}</p>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setShowEnrollModal(false); setEnrollingUser(null); }} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl p-8 overflow-hidden">
+              {!enrollingUser ? (
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight mb-6">Select Student</h2>
+                  <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+                    {availableStudents.map(user => (
+                      <button 
+                        key={user.uid}
+                        onClick={() => setEnrollingUser(user)}
+                        className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-2xl transition-all border border-transparent hover:border-gray-200 text-left"
+                      >
+                        <div>
+                          <p className="font-bold text-gray-900">{user.fullName}</p>
+                          <p className="text-xs text-gray-500">{user.email}</p>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-gray-400" />
+                      </button>
+                    ))}
                   </div>
                 </div>
-
-                <Card title="Academics & Classroom Tracking">
-                  <div className="space-y-4 mt-4 text-xs font-semibold text-gray-600">
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">ENROLLED COURSE:</span>
-                      <span className="text-gray-900 font-bold">{showStudentDetailModal.courseId || 'General'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-400">TELEPHONE PHONE:</span>
-                      <span className="text-gray-900">{showStudentDetailModal.phone || 'No direct telephone'}</span>
+              ) : (
+                <form onSubmit={handleEnroll} className="space-y-6">
+                  <div className="flex items-center gap-4 mb-8">
+                    <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center font-bold text-white text-lg">
+                      {enrollingUser.fullName?.[0]}
                     </div>
                     <div>
-                      <span className="text-gray-400 block mb-2">OVERALL LESSON PROGRESS:</span>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 bg-gray-100 h-2 rounded-full">
-                          <div className="bg-black h-2 rounded-full" style={{ width: `${showStudentDetailModal.progress || 0}%` }}></div>
-                        </div>
-                        <span className="text-sm font-black text-gray-900">{showStudentDetailModal.progress || 0}%</span>
-                      </div>
+                      <h2 className="text-2xl font-bold tracking-tight">Enroll Student</h2>
+                      <p className="text-sm text-gray-500">{enrollingUser.fullName}</p>
                     </div>
                   </div>
-                </Card>
-                
-                <Button 
-                  onClick={() => setShowStudentDetailModal(null)}
-                  className="w-full bg-black text-white py-3 rounded-2xl"
-                >
-                  Return to Dashboard
-                </Button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
-      {/* Admin Creator Modal */}
-      <AnimatePresence>
-        {showForm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div onClick={resetForm} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl p-6 md:p-8"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold tracking-tight text-gray-900">{isEditing ? 'Edit Student Details' : 'Register New Student'}</h2>
-                <button onClick={resetForm} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Full Name</label>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Student Number (Optional)</label>
                     <input 
-                      type="text" 
-                      required 
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm"
+                      value={studentNumber}
+                      onChange={(e) => setStudentNumber(e.target.value)}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
+                      placeholder="e.g. STU-2024-001"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Email Address</label>
-                    <input 
-                      type="email" 
-                      required 
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm"
-                    />
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Phone Number</label>
-                    <input 
-                      type="tel" 
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Enrolled Course</label>
-                    <select 
-                      value={courseId}
-                      onChange={(e) => setCourseId(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm"
-                    >
-                      <option value="">Select a Course</option>
-                      {courses.map(c => (
-                        <option key={c.id} value={c.title}>{c.title}</option>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Select Course</label>
+                    <div className="grid grid-cols-1 gap-2">
+                      {courses.map(course => (
+                        <button
+                          key={course.id}
+                          type="button"
+                          onClick={() => setSelectedCourseId(course.id)}
+                          className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
+                            selectedCourseId === course.id ? 'border-black bg-black/5' : 'border-gray-50 bg-gray-50 hover:border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <BookOpen className="w-4 h-4 text-gray-400" />
+                            <span className={`text-sm font-bold ${selectedCourseId === course.id ? 'text-black' : 'text-gray-600'}`}>{course.title}</span>
+                          </div>
+                          <span className="text-xs font-bold text-gray-400">${course.fee}</span>
+                        </button>
                       ))}
-                      <option value="Advanced Mathematics">Advanced Mathematics</option>
-                      <option value="Physics 101">Physics 101</option>
-                      <option value="Introduction to Programming">Introduction to Programming</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Total Tuition Fee ($)</label>
-                    <input 
-                      type="number" 
-                      required
-                      value={totalFee}
-                      onChange={(e) => setTotalFee(Number(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Tuition Paid ($)</label>
-                    <input 
-                      type="number" 
-                      required
-                      value={amountPaid}
-                      onChange={(e) => setAmountPaid(Number(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Account Status</label>
-                    <select 
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value as any)}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm"
-                    >
-                      <option value="active">Active</option>
-                      <option value="suspended">Suspended</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Calculated Balance ($)</label>
-                    <div className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-600">
-                      ${totalFee - amountPaid}
                     </div>
                   </div>
-                </div>
 
-                <div className="flex justify-end gap-2 pt-6">
-                  <Button variant="outline" type="button" onClick={resetForm}>Cancel</Button>
-                  <Button type="submit" className="bg-black text-white hover:bg-gray-800">
-                    {isEditing ? 'Save Changes' : 'Register Student'}
-                  </Button>
-                </div>
-              </form>
+                  <div className="pt-4 flex gap-3">
+                    <Button variant="outline" onClick={() => setEnrollingUser(null)} className="flex-1 py-3">Back</Button>
+                    <Button type="submit" disabled={!selectedCourseId || loading} className="flex-[2] py-3 bg-black text-white">
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Confirm Enrollment'}
+                    </Button>
+                  </div>
+                </form>
+              )}
             </motion.div>
           </div>
         )}

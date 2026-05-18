@@ -85,7 +85,7 @@ export function Announcements() {
       await addDoc(collection(db, 'announcements'), {
         content: annContent,
         authorId: profile.uid,
-        authorName: profile.name,
+        authorName: profile.fullName,
         courseId: annCourse,
         createdAt: serverTimestamp()
       });

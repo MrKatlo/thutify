@@ -43,7 +43,7 @@ export function Certificates() {
                     </div>
                     <div className="flex gap-2">
                       <Button 
-                        onClick={() => alert(`Verified Certificate ID: ${cert.id}\nRecipient: ${profile.name}\nCourse: ${cert.course}\nStatus: Officially Verified`)}
+                        onClick={() => alert(`Verified Certificate ID: ${cert.id}\nRecipient: ${profile.fullName}\nCourse: ${cert.course}\nStatus: Officially Verified`)}
                         variant="outline" 
                         className="text-xs py-2"
                       >
@@ -57,7 +57,7 @@ export function Certificates() {
                               <div style="font-family:sans-serif; text-align:center; padding:50px; border:20px solid black; margin:20px;">
                                 <h1 style="font-size:40px; margin-bottom:10px;">CERTIFICATE OF COMPLETION</h1>
                                 <p style="font-size:18px; color:#555;">This is proudly presented to</p>
-                                <h2 style="font-size:32px; font-weight:bold; margin:20px 0;">${profile.name}</h2>
+                                <h2 style="font-size:32px; font-weight:bold; margin:20px 0;">${profile.fullName}</h2>
                                 <p style="font-size:18px; color:#555;">for successfully completing the course</p>
                                 <h3 style="font-size:24px; font-weight:bold; margin:20px 0;">${cert.course}</h3>
                                 <p style="font-size:14px; color:#999; margin-top:50px;">Certificate ID: ${cert.id} • Issued on ${cert.issueDate}</p>

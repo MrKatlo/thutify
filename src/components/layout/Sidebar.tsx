@@ -1,9 +1,8 @@
-import { BookOpen, Home, LogOut, Users, Bell, DollarSign, BarChart2, CheckSquare, Award, Settings, FileText, Activity, PenTool, GraduationCap, Video, Calendar, Folder } from 'lucide-react';
+import { BookOpen, Home, LogOut, Users, Bell, DollarSign, BarChart2, ShieldCheck, UserPlus } from 'lucide-react';
 import { Button } from '../ui/Card';
-import { logout, db } from '../../lib/firebase';
+import { logout } from '../../lib/firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { cn } from '../../lib/utils';
-import { doc, updateDoc } from 'firebase/firestore';
 
 export function Sidebar({ 
   activeTab, 
@@ -21,46 +20,23 @@ export function Sidebar({
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, roles: ['admin', 'teacher', 'student'] },
     { id: 'courses', label: 'Courses', icon: BookOpen, roles: ['admin', 'teacher', 'student'] },
-    { id: 'students', label: 'Students', icon: Users, roles: ['admin', 'teacher'] },
-    { id: 'teachers', label: 'Teachers', icon: GraduationCap, roles: ['admin'] },
-    { id: 'financials', label: 'Financials', icon: DollarSign, roles: ['admin', 'student'] },
-    { id: 'attendance', label: 'Attendance', icon: CheckSquare, roles: ['admin', 'teacher', 'student'] },
-    { id: 'assessment', label: 'Assignments', icon: PenTool, roles: ['admin', 'teacher', 'student'] },
-    { id: 'liveclasses', label: 'Live Classes', icon: Video, roles: ['admin', 'teacher', 'student'] },
-    { id: 'calendar', label: 'Calendar', icon: Calendar, roles: ['admin', 'teacher', 'student'] },
-    { id: 'library', label: 'Content Library', icon: Folder, roles: ['admin', 'teacher', 'student'] },
-    { id: 'certificates', label: 'Certificates', icon: Award, roles: ['admin', 'student'] },
+    { id: 'students', label: 'Student Directory', icon: Users, roles: ['admin', 'teacher'] },
+    { id: 'users', label: 'User Management', icon: ShieldCheck, roles: ['admin'] },
+    { id: 'financials', label: 'Financials', icon: DollarSign, roles: ['admin'] },
+    { id: 'reports', label: 'Reports', icon: BarChart2, roles: ['admin'] },
     { id: 'announcements', label: 'Announcements', icon: Bell, roles: ['admin', 'teacher', 'student'] },
-    { id: 'reports', label: 'Reports', icon: BarChart2, roles: ['admin', 'teacher', 'student'] },
-    { id: 'content', label: 'CMS Content', icon: FileText, roles: ['admin'] },
-    { id: 'monitoring', label: 'Monitoring', icon: Activity, roles: ['admin'] },
-    { id: 'settings', label: 'Settings', icon: Settings, roles: ['admin', 'teacher', 'student'] },
   ];
 
   const filteredMenu = menuItems.filter(item => 
     profile?.role && item.roles.includes(profile.role)
   );
 
-  const handleRoleChange = async (newRole: any) => {
-    localStorage.setItem('user_role', newRole);
-    if (profile?.uid) {
-      try {
-        await updateDoc(doc(db, 'users', profile.uid), {
-          role: newRole
-        });
-      } catch (err) {
-        console.error("Failed to persist role change to Firestore:", err);
-      }
-    }
-    window.location.reload();
-  };
-
   return (
     <>
       <div 
         className={cn(
-          "fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden",
-          isOpen ? "block" : "hidden"
+          "fixed inset-0 bg-black/20 z-40 lg:hidden transition-opacity",
+          isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
         onClick={() => setIsOpen(false)}
       />
@@ -104,17 +80,9 @@ export function Sidebar({
             className="w-10 h-10 rounded-full border border-gray-200"
             alt="User avatar"
           />
-          <div className="overflow-hidden flex-1">
-            <p className="text-sm font-semibold truncate">{profile?.name || 'User'}</p>
-            <select
-              value={profile?.role || 'admin'}
-              onChange={(e) => handleRoleChange(e.target.value)}
-              className="text-xs text-gray-500 font-bold uppercase bg-gray-50 border border-gray-200 rounded px-1 py-0.5 mt-0.5 outline-none cursor-pointer hover:bg-gray-100 hover:text-black transition-all"
-            >
-              <option value="admin">Admin</option>
-              <option value="teacher">Teacher</option>
-              <option value="student">Student</option>
-            </select>
+          <div className="overflow-hidden">
+            <p className="text-sm font-semibold truncate">{profile?.fullName || 'User'}</p>
+            <p className="text-xs text-gray-400 capitalize">{profile?.role}</p>
           </div>
         </div>
         <Button 

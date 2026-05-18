@@ -288,7 +288,7 @@ export function Assessment() {
           quizTitle: activeQuizAttempt.title,
           courseName: activeQuizAttempt.courseName,
           studentId: profile.uid,
-          studentName: profile.name,
+          studentName: profile.fullName,
           answers: quizAnswers,
           score: finalPercent,
           submittedAt: new Date(),
@@ -327,17 +327,17 @@ export function Assessment() {
         // Create new submission
         await addDoc(collection(db, 'submissions'), {
           assignmentId: submitAssignmentTarget.id,
-          assignmentTitle: submitAssignmentTarget.title,
-          studentId: profile.uid,
-          studentName: profile.name,
-          courseName: submitAssignmentTarget.courseName,
-          fileUrl: studentSubmitLink,
-          notes: studentSubmitNotes,
-          submittedAt: new Date(),
-          grade: '',
-          feedback: '',
-          status: 'pending'
-        });
+        assignmentTitle: submitAssignmentTarget.title,
+        studentId: profile.uid,
+        studentName: profile.fullName,
+        courseName: submitAssignmentTarget.courseName,
+        fileUrl: studentSubmitLink,
+        notes: studentSubmitNotes,
+        submittedAt: new Date(),
+        grade: '',
+        feedback: '',
+        status: 'pending'
+      });
         alert("Homework successfully submitted to classroom!");
       }
       
