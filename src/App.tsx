@@ -86,7 +86,7 @@ export default function App() {
       case 'users':
         return isAdmin ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
       case 'reports':
-        return isAdmin ? <Reports /> : <Dashboard setActiveTab={setActiveTab} />;
+        return <Reports />;
       default:
         return (
           <div className="p-8 flex items-center justify-center min-h-[50vh]">

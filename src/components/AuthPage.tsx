@@ -89,7 +89,11 @@ export function AuthPage() {
     setError('');
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      // Update lastLogin in Firestore
+      await updateDoc(doc(db, 'users', userCredential.user.uid), {
+        lastLogin: serverTimestamp()
+      }).catch(err => console.warn("Failed to update lastLogin:", err));
     } catch (err: any) {
       setError(err.message.includes('auth/user-not-found') || err.message.includes('auth/wrong-password') 
         ? 'Invalid email or password.' 
@@ -128,6 +132,7 @@ export function AuthPage() {
         status: 'active',
         createdBy: invite!.createdBy,
         createdAt: serverTimestamp(),
+        lastLogin: serverTimestamp(), // Set initial lastLogin
       };
       batch.set(doc(db, 'users', user.uid), profile);
 
@@ -142,14 +147,24 @@ export function AuthPage() {
         };
         batch.set(doc(db, 'teachers', user.uid), teacherProfile);
       } else if (invite!.role === 'student') {
+        let initialTotalFee = 0;
+        if (invite!.assignedCourses && invite!.assignedCourses.length > 0) {
+          for (const courseId of invite!.assignedCourses) {
+            const courseSnap = await getDoc(doc(db, 'courses', courseId));
+            if (courseSnap.exists()) {
+              initialTotalFee += Number(courseSnap.data().fee || 0);
+            }
+          }
+        }
+
         const studentProfile: StudentProfile = {
           userId: user.uid,
           studentNumber: `STU-${Math.floor(1000 + Math.random() * 9000)}`,
           phone: '',
           paymentStatus: 'unpaid',
-          totalFee: 0,
+          totalFee: initialTotalFee,
           amountPaid: 0,
-          balance: 0,
+          balance: initialTotalFee,
           academicStatus: 'active'
         };
         batch.set(doc(db, 'students', user.uid), studentProfile);
@@ -157,7 +172,8 @@ export function AuthPage() {
         // Create Enrollments
         if (invite!.assignedCourses) {
           for (const courseId of invite!.assignedCourses) {
-            const enrollRef = doc(collection(db, 'enrollments'));
+            const enrollmentId = `${user.uid}_${courseId}`;
+            const enrollRef = doc(db, 'enrollments', enrollmentId);
             batch.set(enrollRef, {
               studentId: user.uid,
               courseId: courseId,

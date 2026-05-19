@@ -23,7 +23,7 @@ export function Sidebar({
     { id: 'students', label: 'Student Directory', icon: Users, roles: ['admin', 'teacher'] },
     { id: 'users', label: 'User Management', icon: ShieldCheck, roles: ['admin'] },
     { id: 'financials', label: 'Financials', icon: DollarSign, roles: ['admin'] },
-    { id: 'reports', label: 'Reports', icon: BarChart2, roles: ['admin'] },
+    { id: 'reports', label: 'Reports', icon: BarChart2, roles: ['admin', 'teacher', 'student'] },
     { id: 'announcements', label: 'Announcements', icon: Bell, roles: ['admin', 'teacher', 'student'] },
   ];
 

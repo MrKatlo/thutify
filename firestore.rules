@@ -15,6 +15,7 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    // Role Checks
     function isAdmin() {
       return isSignedIn() && getProfile().role == 'admin';
     }
@@ -27,35 +28,37 @@ service cloud.firestore {
       return isSignedIn() && getProfile().role == 'student';
     }
 
+    // Enrollment Validation helper (standardized document ID: studentId_courseId)
     function isEnrolled(courseId) {
-      return isSignedIn() && exists(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId));
-    }
-    
-    // Better enrollment check for dynamic IDs
-    function checkEnrollment(courseId) {
       return isSignedIn() && 
-        getAfter(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId)).data.status == 'active' ||
-        get(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId)).data.status == 'active';
+        exists(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId)) &&
+        (get(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId)).data.status == 'active' ||
+         get(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId)).data.status == 'completed');
     }
 
-    // Match Blocks
+    // --- COLLECTION RULES ---
+
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
-      allow create: if false; // Only via Admin/Functions (simulated in UI but should be blocked here)
+      // Allow Admin to create any profile; allow new users to create their own profile if status is active
+      allow create: if isAdmin() || (isSignedIn() && request.auth.uid == userId && request.resource.data.status == 'active');
       allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
       allow delete: if isAdmin();
     }
     
     match /invites/{inviteId} {
-      allow read: if true; // Needed for verifyInvite on AuthPage
-      allow write: if isAdmin();
+      allow read: if true; // Public read needed for verifyInvite token checks
+      allow create: if isAdmin();
+      // Allow Admin or user activating invite (marking as used) to update it
+      allow update: if isAdmin() || (request.resource.data.status == 'used' && resource.data.status == 'pending');
+      allow delete: if isAdmin();
     }
 
     match /courses/{courseId} {
       allow read: if isAdmin() || 
                     (isTeacher() && resource.data.teacherId == request.auth.uid) ||
-                    isStudent(); // Students can see titles, but content is protected in sub-collections
+                    (isStudent() && isEnrolled(courseId)); // Enrolled students only!
       allow create: if isAdmin();
       allow update: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
       allow delete: if isAdmin();
@@ -65,17 +68,20 @@ service cloud.firestore {
       allow read: if isAdmin() || 
                     (isTeacher() && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid) ||
                     (isStudent() && resource.data.studentId == request.auth.uid);
-      allow write: if isAdmin();
+      // Student can create their own active enrollment during invite activation
+      allow create: if isAdmin() || (isSignedIn() && enrollId.startsWith(request.auth.uid) && request.resource.data.studentId == request.auth.uid);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /students/{userId} {
       allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
-      allow write: if isAdmin();
+      allow write: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
     }
 
     match /teachers/{userId} {
       allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
-      allow write: if isAdmin();
+      allow write: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
     }
 
     match /payments/{paymentId} {
@@ -85,22 +91,58 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    match /announcements/{announcementId} {
-      allow read: if isSignedIn();
-      allow create: if isAdmin() || isTeacher();
-      allow update: if isAdmin() || isTeacher();
-      allow delete: if isAdmin() || isTeacher();
+    match /attendance/{attendanceId} {
+      allow read: if isAdmin() || 
+                    (isStudent() && resource.data.studentId == request.auth.uid) ||
+                    (isTeacher() && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
+      allow write: if isAdmin() || 
+                    (isTeacher() && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.teacherId == request.auth.uid);
     }
 
-    // Lesson content and progress
-    match /lessons/{lessonId} {
+    match /submissions/{submissionId} {
       allow read: if isAdmin() || 
-                    (isTeacher() && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid) ||
-                    (isStudent()); // Content usually restricted via enrollment check in frontend, but could be tighter here
+                    (isStudent() && resource.data.studentId == request.auth.uid) ||
+                    (isTeacher() && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
+      allow create: if isAdmin() || 
+                    (isStudent() && request.resource.data.studentId == request.auth.uid && isEnrolled(request.resource.data.courseId));
+      allow update: if isAdmin() || 
+                    (isStudent() && resource.data.studentId == request.auth.uid && request.resource.data.studentId == request.auth.uid) ||
+                    (isTeacher() && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /assignments/{assignmentId} {
+      allow read: if isAdmin() || 
+                    (isTeacher() && resource.data.teacherId == request.auth.uid) ||
+                    (isStudent() && isEnrolled(resource.data.courseId));
+      allow write: if isAdmin() || 
+                    (isTeacher() && request.resource.data.teacherId == request.auth.uid);
+    }
+
+    match /liveClasses/{classId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isTeacher();
+    }
+
+    match /lessonProgress/{progressId} {
+      allow read: if isAdmin() ||
+                    (isSignedIn() && progressId.startsWith(request.auth.uid)) ||
+                    (isTeacher() && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
+      allow write: if isAdmin() || (isSignedIn() && progressId.startsWith(request.auth.uid));
+    }
+
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     match /applications/{applicationId} {
-      allow create: if true;
+      allow create: if true; // Any prospective user can apply
       allow read, write: if isAdmin();
     }
   }
