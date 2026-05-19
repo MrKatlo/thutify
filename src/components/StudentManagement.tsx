@@ -129,7 +129,8 @@ export function StudentManagement() {
       const batch = writeBatch(db);
 
       // 1. Create Enrollment
-      const enrollRef = doc(collection(db, 'enrollments'));
+      const enrollmentId = `${enrollingUser.uid}_${selectedCourseId}`;
+      const enrollRef = doc(db, 'enrollments', enrollmentId);
       batch.set(enrollRef, {
         studentId: enrollingUser.uid,
         courseId: selectedCourseId,
@@ -137,9 +138,10 @@ export function StudentManagement() {
         enrolledAt: serverTimestamp()
       });
 
-      // 2. Ensure Student Profile exists
+      // 2. Ensure Student Profile exists and has correct total fee / balance
       const studentProfileRef = doc(db, 'students', enrollingUser.uid);
       const profileSnap = await getDoc(studentProfileRef);
+      const courseFee = Number(courses.find(c => c.id === selectedCourseId)?.fee || 0);
       
       if (!profileSnap.exists()) {
         batch.set(studentProfileRef, {
@@ -147,10 +149,20 @@ export function StudentManagement() {
           studentNumber: studentNumber || `STU-${Math.floor(1000 + Math.random() * 9000)}`,
           phone: '',
           paymentStatus: 'unpaid',
-          totalFee: courses.find(c => c.id === selectedCourseId)?.fee || 0,
+          totalFee: courseFee,
           amountPaid: 0,
-          balance: courses.find(c => c.id === selectedCourseId)?.fee || 0,
+          balance: courseFee,
           academicStatus: 'active'
+        });
+      } else {
+        const currentData = profileSnap.data();
+        const updatedTotalFee = Number(currentData.totalFee || 0) + courseFee;
+        const updatedBalance = Number(currentData.balance || 0) + courseFee;
+        const amountPaid = Number(currentData.amountPaid || 0);
+        batch.update(studentProfileRef, {
+          totalFee: updatedTotalFee,
+          balance: updatedBalance,
+          paymentStatus: amountPaid >= updatedTotalFee ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid'
         });
       }
 
@@ -169,7 +181,33 @@ export function StudentManagement() {
   const handleDrop = async (enrollId: string) => {
     if (!confirm('Are you sure you want to drop this student from the course?')) return;
     try {
-      await deleteDoc(doc(db, 'enrollments', enrollId));
+      const batch = writeBatch(db);
+      
+      // 1. Delete enrollment
+      batch.delete(doc(db, 'enrollments', enrollId));
+
+      // 2. Adjust Student Profile balance & total fee
+      const [studentId, courseId] = enrollId.split('_');
+      const studentProfileRef = doc(db, 'students', studentId);
+      const studentSnap = await getDoc(studentProfileRef);
+      const courseSnap = await getDoc(doc(db, 'courses', courseId));
+
+      if (studentSnap.exists() && courseSnap.exists()) {
+        const studentData = studentSnap.data();
+        const courseFee = Number(courseSnap.data().fee || 0);
+        
+        const updatedTotalFee = Math.max(0, Number(studentData.totalFee || 0) - courseFee);
+        const updatedBalance = Math.max(0, Number(studentData.balance || 0) - courseFee);
+        const amountPaid = Number(studentData.amountPaid || 0);
+        
+        batch.update(studentProfileRef, {
+          totalFee: updatedTotalFee,
+          balance: updatedBalance,
+          paymentStatus: amountPaid >= updatedTotalFee ? 'paid' : amountPaid > 0 ? 'partial' : 'unpaid'
+        });
+      }
+
+      await batch.commit();
       fetchData();
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `enrollments/${enrollId}`);
