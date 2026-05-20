@@ -1,4 +1,4 @@
-import { useState, FormEvent, ChangeEvent } from 'react';
+import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
@@ -71,6 +71,35 @@ export function InstitutionSignupPage() {
     }
   };
 
+  useEffect(() => {
+    if (instSlug.trim().length > 2) {
+      setCheckingSlug(true);
+      const timer = setTimeout(async () => {
+        try {
+          const q = query(collection(db, 'institutions'), where('slug', '==', instSlug.trim()));
+          const snapshot = await getDocs(q);
+          
+          if (!snapshot.empty) {
+            setSlugStatus('invalid');
+          } else {
+            setSlugStatus('valid');
+          }
+        } catch (err) {
+          console.error("Error checking slug uniqueness:", err);
+          // Fallback to valid to prevent blocking the user if background database check fails
+          setSlugStatus('valid');
+        } finally {
+          setCheckingSlug(false);
+        }
+      }, 400); // 400ms debounce
+      
+      return () => clearTimeout(timer);
+    } else {
+      setSlugStatus('none');
+      setCheckingSlug(false);
+    }
+  }, [instSlug]);
+
   const handleNameChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setInstName(value);
@@ -81,14 +110,9 @@ export function InstitutionSignupPage() {
       .replace(/[^a-z0-9\s-]/g, '') // strip special chars
       .replace(/\s+/g, '-')         // replace spaces with dash
       .replace(/-+/g, '-')          // replace multiple dashes with single dash
-      .trim();
+      .replace(/^-+|-+$/g, '');     // strip leading/trailing dashes
     
     setInstSlug(generated);
-    if (generated.length > 2) {
-      checkSlugUniqueness(generated);
-    } else {
-      setSlugStatus('none');
-    }
   };
 
   const handleSlugChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -98,31 +122,6 @@ export function InstitutionSignupPage() {
       .replace(/-+/g, '-');
     
     setInstSlug(value);
-    if (value.length > 2) {
-      checkSlugUniqueness(value);
-    } else {
-      setSlugStatus('none');
-    }
-  };
-
-  const checkSlugUniqueness = async (slug: string) => {
-    setCheckingSlug(true);
-    try {
-      const q = query(collection(db, 'institutions'), where('slug', '==', slug));
-      const snapshot = await getDocs(q);
-      
-      if (!snapshot.empty) {
-        setSlugStatus('invalid');
-      } else {
-        setSlugStatus('valid');
-      }
-    } catch (err) {
-      console.error("Error checking slug uniqueness:", err);
-      // Fallback to valid to prevent blocking the user if background database check fails
-      setSlugStatus('valid');
-    } finally {
-      setCheckingSlug(false);
-    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
