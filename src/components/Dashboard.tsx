@@ -11,7 +11,7 @@ interface DashboardProps {
 }
 
 export function Dashboard({ setActiveTab }: DashboardProps) {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   
   // Admin & Teacher stats
   const [stats, setStats] = useState({
@@ -267,7 +267,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
     { label: 'Payment Balance', value: `$${studentStats.balance.toLocaleString()}`, icon: DollarSign, color: studentStats.balance > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600', tab: 'financials' },
   ];
 
-  const statsList = profile?.role === 'admin' 
+  const statsList = isAdmin 
     ? getAdminStatsList() 
     : profile?.role === 'teacher' 
     ? getTeacherStatsList() 
@@ -448,9 +448,9 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
             </div>
           </Card>
 
-          <Card title={profile?.role === 'admin' ? 'Unpaid Balance Alerts' : 'Learning Progress'}>
+          <Card title={isAdmin ? 'Unpaid Balance Alerts' : 'Learning Progress'}>
              <div className="space-y-6 mt-4">
-               {profile?.role === 'admin' ? (
+               {isAdmin ? (
                  <>
                    {[
                      { name: 'Alex Johnson', balance: 250 },
