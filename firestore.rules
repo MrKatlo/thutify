@@ -11,139 +11,203 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function getProfile() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    // Platform Super Admin Bypass
+    function isPlatformAdmin() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isPlatformAdmin == true;
     }
 
-    // Role Checks
-    function isAdmin() {
-      return isSignedIn() && getProfile().role == 'admin';
+    // Multi-tenant isolation helpers
+    function hasMembership(institutionId) {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/institutionUsers/$(request.auth.uid + '_' + institutionId));
     }
 
-    function isTeacher() {
-      return isSignedIn() && getProfile().role == 'teacher';
+    function getMembership(institutionId) {
+      return get(/databases/$(database)/documents/institutionUsers/$(request.auth.uid + '_' + institutionId)).data;
     }
 
-    function isStudent() {
-      return isSignedIn() && getProfile().role == 'student';
+    function instRole(institutionId) {
+      return getMembership(institutionId).role;
+    }
+
+    function instStatus(institutionId) {
+      return getMembership(institutionId).status;
+    }
+
+    function isInstActiveMember(institutionId) {
+      return hasMembership(institutionId) && instStatus(institutionId) == 'active';
+    }
+
+    // Admin role includes both general 'admin' and school owner 'owner' memberships
+    function isInstAdmin(institutionId) {
+      return isInstActiveMember(institutionId) && 
+             (instRole(institutionId) == 'admin' || instRole(institutionId) == 'owner');
+    }
+
+    function isInstTeacher(institutionId) {
+      return isInstActiveMember(institutionId) && instRole(institutionId) == 'teacher';
+    }
+
+    function isInstStudent(institutionId) {
+      return isInstActiveMember(institutionId) && instRole(institutionId) == 'student';
     }
 
     // Enrollment Validation helper (standardized document ID: studentId_courseId)
     function isEnrolled(courseId) {
       return isSignedIn() && 
-        exists(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId)) &&
-        (get(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId)).data.status == 'active' ||
-         get(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId)).data.status == 'completed');
+             exists(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId)) &&
+             (get(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId)).data.status == 'active' ||
+              get(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + courseId)).data.status == 'completed');
     }
 
     // --- COLLECTION RULES ---
 
-    match /users/{userId} {
-      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow list: if isAdmin();
-      // Allow Admin to create any profile; allow new users to create their own profile if status is active
-      allow create: if isAdmin() || (isSignedIn() && request.auth.uid == userId && request.resource.data.status == 'active');
-      allow update: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
-      allow delete: if isAdmin();
-    }
-    
-    match /invites/{inviteId} {
-      allow read: if true; // Public read needed for verifyInvite token checks
-      allow create: if isAdmin();
-      // Allow Admin or user activating invite (marking as used) to update it
-      allow update: if isAdmin() || (request.resource.data.status == 'used' && resource.data.status == 'pending');
-      allow delete: if isAdmin();
+    // 1. institutions
+    match /institutions/{instId} {
+      allow get: if true; // Publicly get credentials for branded route loading
+      allow list: if isPlatformAdmin();
+      allow create: if isSignedIn();
+      allow update: if isPlatformAdmin() || (isSignedIn() && resource.data.ownerUserId == request.auth.uid && request.resource.data.ownerUserId == request.auth.uid);
+      allow delete: if isPlatformAdmin();
     }
 
+    // 2. users
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isPlatformAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isPlatformAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow delete: if isPlatformAdmin();
+    }
+
+    // 3. institutionUsers (format: userId_institutionId)
+    match /institutionUsers/{membershipId} {
+      allow read: if isPlatformAdmin() || 
+                    (isSignedIn() && (resource.data.userId == request.auth.uid || isInstAdmin(resource.data.institutionId)));
+      allow create: if isSignedIn() && 
+                    (request.resource.data.userId == request.auth.uid || isInstAdmin(request.resource.data.institutionId));
+      allow update: if isPlatformAdmin() || isInstAdmin(resource.data.institutionId);
+      allow delete: if isPlatformAdmin() || isInstAdmin(resource.data.institutionId);
+    }
+
+    // 4. studentApplications
+    match /studentApplications/{appId} {
+      allow read: if isPlatformAdmin() || 
+                    (isSignedIn() && (resource.data.userId == request.auth.uid || isInstAdmin(resource.data.institutionId)));
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isPlatformAdmin() || isInstAdmin(resource.data.institutionId);
+      allow delete: if isPlatformAdmin() || isInstAdmin(resource.data.institutionId);
+    }
+
+    // --- EXISTING DASHBOARD COLLECTIONS SCOPED BY INSTITUTIONID ---
+
     match /courses/{courseId} {
-      allow read: if isAdmin() || 
-                    (isTeacher() && resource.data.teacherId == request.auth.uid) ||
-                    (isStudent() && isEnrolled(courseId)); // Enrolled students only!
-      allow create: if isAdmin();
-      allow update: if isAdmin() || (isTeacher() && resource.data.teacherId == request.auth.uid);
-      allow delete: if isAdmin();
+      allow read: if isPlatformAdmin() || 
+                    isInstAdmin(resource.data.institutionId) || 
+                    (isInstTeacher(resource.data.institutionId) && resource.data.teacherId == request.auth.uid) ||
+                    (isInstStudent(resource.data.institutionId) && isEnrolled(courseId));
+      allow create: if isPlatformAdmin() || isInstAdmin(request.resource.data.institutionId);
+      allow update: if isPlatformAdmin() || 
+                    isInstAdmin(resource.data.institutionId) || 
+                    (isInstTeacher(resource.data.institutionId) && resource.data.teacherId == request.auth.uid);
+      allow delete: if isPlatformAdmin() || isInstAdmin(resource.data.institutionId);
     }
     
     match /enrollments/{enrollId} {
-      allow read: if isAdmin() || 
-                    (isTeacher() && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid) ||
-                    (isStudent() && resource.data.studentId == request.auth.uid);
-      // Student can create their own active enrollment during invite activation
-      allow create: if isAdmin() || (isSignedIn() && enrollId.startsWith(request.auth.uid) && request.resource.data.studentId == request.auth.uid);
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read: if isPlatformAdmin() || 
+                    isInstAdmin(resource.data.institutionId) || 
+                    (isInstTeacher(resource.data.institutionId) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid) ||
+                    (isInstStudent(resource.data.institutionId) && resource.data.studentId == request.auth.uid);
+      allow create: if isPlatformAdmin() || 
+                    isInstAdmin(request.resource.data.institutionId) || 
+                    (isSignedIn() && enrollId.startsWith(request.auth.uid) && request.resource.data.studentId == request.auth.uid);
+      allow update: if isPlatformAdmin() || isInstAdmin(resource.data.institutionId);
+      allow delete: if isPlatformAdmin() || isInstAdmin(resource.data.institutionId);
     }
 
     match /students/{userId} {
-      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
-      allow write: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow read: if isPlatformAdmin() || 
+                    (isSignedIn() && (request.auth.uid == userId || isInstAdmin(resource.data.institutionId)));
+      allow write: if isPlatformAdmin() || 
+                     (isSignedIn() && (request.auth.uid == userId || isInstAdmin(request.resource.data.institutionId)));
     }
 
     match /teachers/{userId} {
-      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
-      allow write: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow read: if isPlatformAdmin() || 
+                    (isSignedIn() && (request.auth.uid == userId || isInstAdmin(resource.data.institutionId)));
+      allow write: if isPlatformAdmin() || 
+                     (isSignedIn() && (request.auth.uid == userId || isInstAdmin(request.resource.data.institutionId)));
     }
 
     match /payments/{paymentId} {
-      allow read: if isAdmin() || (isStudent() && resource.data.studentId == request.auth.uid);
-      allow create: if isAdmin();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow read: if isPlatformAdmin() || 
+                    isInstAdmin(resource.data.institutionId) || 
+                    (isInstStudent(resource.data.institutionId) && resource.data.studentId == request.auth.uid);
+      allow create: if isPlatformAdmin() || isInstAdmin(request.resource.data.institutionId);
+      allow update: if isPlatformAdmin() || isInstAdmin(resource.data.institutionId);
+      allow delete: if isPlatformAdmin() || isInstAdmin(resource.data.institutionId);
     }
 
     match /attendance/{attendanceId} {
-      allow read: if isAdmin() || 
-                    (isStudent() && resource.data.studentId == request.auth.uid) ||
-                    (isTeacher() && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
-      allow write: if isAdmin() || 
-                    (isTeacher() && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.teacherId == request.auth.uid);
+      allow read: if isPlatformAdmin() || 
+                    isInstAdmin(resource.data.institutionId) || 
+                    (isInstStudent(resource.data.institutionId) && resource.data.studentId == request.auth.uid) ||
+                    (isInstTeacher(resource.data.institutionId) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
+      allow write: if isPlatformAdmin() || 
+                    isInstAdmin(resource.data.institutionId) || 
+                    (isInstTeacher(resource.data.institutionId) && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.teacherId == request.auth.uid);
     }
 
     match /submissions/{submissionId} {
-      allow read: if isAdmin() || 
-                    (isStudent() && resource.data.studentId == request.auth.uid) ||
-                    (isTeacher() && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
-      allow create: if isAdmin() || 
-                    (isStudent() && request.resource.data.studentId == request.auth.uid && isEnrolled(request.resource.data.courseId));
-      allow update: if isAdmin() || 
-                    (isStudent() && resource.data.studentId == request.auth.uid && request.resource.data.studentId == request.auth.uid) ||
-                    (isTeacher() && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
-      allow delete: if isAdmin();
+      allow read: if isPlatformAdmin() || 
+                    isInstAdmin(resource.data.institutionId) || 
+                    (isInstStudent(resource.data.institutionId) && resource.data.studentId == request.auth.uid) ||
+                    (isInstTeacher(resource.data.institutionId) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
+      allow create: if isPlatformAdmin() || 
+                    isInstAdmin(request.resource.data.institutionId) || 
+                    (isInstStudent(resource.data.institutionId) && request.resource.data.studentId == request.auth.uid && isEnrolled(request.resource.data.courseId));
+      allow update: if isPlatformAdmin() || 
+                    isInstAdmin(resource.data.institutionId) || 
+                    (isInstStudent(resource.data.institutionId) && resource.data.studentId == request.auth.uid && request.resource.data.studentId == request.auth.uid) ||
+                    (isInstTeacher(resource.data.institutionId) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
+      allow delete: if isPlatformAdmin() || isInstAdmin(resource.data.institutionId);
     }
 
     match /assignments/{assignmentId} {
-      allow read: if isAdmin() || 
-                    (isTeacher() && resource.data.teacherId == request.auth.uid) ||
-                    (isStudent() && isEnrolled(resource.data.courseId));
-      allow write: if isAdmin() || 
-                    (isTeacher() && request.resource.data.teacherId == request.auth.uid);
+      allow read: if isPlatformAdmin() || 
+                    isInstAdmin(resource.data.institutionId) || 
+                    (isInstTeacher(resource.data.institutionId) && resource.data.teacherId == request.auth.uid) ||
+                    (isInstStudent(resource.data.institutionId) && isEnrolled(resource.data.courseId));
+      allow write: if isPlatformAdmin() || 
+                    isInstAdmin(request.resource.data.institutionId) || 
+                    (isInstTeacher(resource.data.institutionId) && request.resource.data.teacherId == request.auth.uid);
     }
 
     match /liveClasses/{classId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin() || isTeacher();
+      allow read: if isPlatformAdmin() || isInstActiveMember(resource.data.institutionId);
+      allow write: if isPlatformAdmin() || isInstAdmin(request.resource.data.institutionId) || isInstTeacher(request.resource.data.institutionId);
     }
 
     match /announcements/{announcementId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin() || isTeacher();
+      allow read: if isPlatformAdmin() || isInstActiveMember(resource.data.institutionId);
+      allow write: if isPlatformAdmin() || isInstAdmin(request.resource.data.institutionId) || isInstTeacher(request.resource.data.institutionId);
     }
 
     match /lessonProgress/{progressId} {
-      allow read: if isAdmin() ||
+      allow read: if isPlatformAdmin() || 
+                    isInstAdmin(resource.data.institutionId) || 
                     (isSignedIn() && progressId.startsWith(request.auth.uid)) ||
-                    (isTeacher() && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
-      allow write: if isAdmin() || (isSignedIn() && progressId.startsWith(request.auth.uid));
+                    (isInstTeacher(resource.data.institutionId) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.teacherId == request.auth.uid);
+      allow write: if isPlatformAdmin() || 
+                    isInstAdmin(request.resource.data.institutionId) || 
+                    (isSignedIn() && progressId.startsWith(request.auth.uid));
     }
 
     match /settings/{settingId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /applications/{applicationId} {
-      allow create: if true; // Any prospective user can apply
-      allow read, write: if isAdmin();
+      allow read: if isPlatformAdmin() || isInstActiveMember(resource.data.institutionId);
+      allow write: if isPlatformAdmin() || isInstAdmin(request.resource.data.institutionId);
     }
   }
 }

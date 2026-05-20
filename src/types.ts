@@ -101,3 +101,50 @@ export interface Announcement {
   courseId: string; // Can be 'global' or a specific course ID
   createdAt: any;
 }
+
+export interface Institution {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl?: string;
+  primaryColor: string;
+  country: string;
+  institutionType: 'school' | 'college' | 'training_center' | 'company';
+  ownerUserId: string;
+  status: 'active' | 'pending' | 'suspended';
+  createdAt: any;
+  updatedAt: any;
+}
+
+export interface InstitutionUser {
+  id: string;
+  institutionId: string;
+  userId: string;
+  role: 'owner' | 'admin' | 'teacher' | 'student';
+  status: 'active' | 'pending' | 'suspended';
+  createdAt: any;
+  updatedAt: any;
+}
+
+export interface StudentApplication {
+  id: string;
+  institutionId: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: any;
+  updatedAt: any;
+}
+
+export interface PlatformUser {
+  uid: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  isPlatformAdmin?: boolean;
+  createdAt: any;
+  updatedAt: any;
+}
+

@@ -3,17 +3,20 @@ import { Button } from '../ui/Card';
 import { logout } from '../../lib/firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { cn } from '../../lib/utils';
+import { Institution } from '../../types';
 
 export function Sidebar({ 
   activeTab, 
   setActiveTab,
   isOpen,
-  setIsOpen
+  setIsOpen,
+  institution
 }: { 
   activeTab: string, 
   setActiveTab: (tab: string) => void,
   isOpen: boolean,
-  setIsOpen: (open: boolean) => void
+  setIsOpen: (open: boolean) => void,
+  institution?: Institution | null
 }) {
   const { profile } = useAuth();
 
@@ -46,10 +49,16 @@ export function Sidebar({
       )}>
         <div className="p-6">
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-8 h-8 bg-black rounded-lg flex items-center justify-center">
-            <BookOpen className="text-white w-5 h-5" />
+          <div className="w-10 h-10 bg-gray-50 border border-gray-100 rounded-xl flex items-center justify-center shrink-0 shadow-sm">
+            {institution?.logoUrl ? (
+              <img src={institution.logoUrl} className="w-full h-full object-contain rounded-xl" alt="" />
+            ) : (
+              <BookOpen className="text-black w-5 h-5" />
+            )}
           </div>
-          <span className="font-bold text-xl tracking-tight">LearnFlow</span>
+          <span className="font-bold text-lg tracking-tight text-gray-900 truncate">
+            {institution?.name || 'LearnFlow'}
+          </span>
         </div>
 
         <nav className="space-y-1">
