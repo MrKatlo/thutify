@@ -171,6 +171,9 @@ export function InstitutionSignupPage() {
       const userCredential = await createUserWithEmailAndPassword(auth, ownerEmail, password);
       const ownerUid = userCredential.user.uid;
 
+      // Force token refresh to ensure auth state is propagated to Firestore before batch write
+      await userCredential.user.getIdToken(true);
+
       // Step 3: Initialize documents in Firestore using batch write
       const batch = writeBatch(db);
       
