@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
 
 export function Announcements() {
-  const { profile } = useAuth();
+  const { profile, institutionId } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'announcements' | 'conversations'>('announcements');
   const [loading, setLoading] = useState(true);
 
@@ -49,13 +49,14 @@ export function Announcements() {
   ];
 
   const fetchData = async () => {
+    if (!institutionId) return;
     setLoading(true);
     try {
       const [snapAnn, snapMsg, snapCourses, snapStudents] = await Promise.all([
-        getDocs(query(collection(db, 'announcements'), orderBy('createdAt', 'desc'))),
-        getDocs(query(collection(db, 'messages'), orderBy('createdAt', 'asc'))),
-        getDocs(collection(db, 'courses')),
-        getDocs(collection(db, 'students'))
+        getDocs(query(collection(db, 'announcements'), where('institutionId', '==', institutionId), orderBy('createdAt', 'desc'))),
+        getDocs(query(collection(db, 'messages'), where('institutionId', '==', institutionId), orderBy('createdAt', 'asc'))),
+        getDocs(query(collection(db, 'courses'), where('institutionId', '==', institutionId))),
+        getDocs(query(collection(db, 'institutionUsers'), where('institutionId', '==', institutionId), where('role', '==', 'student')))
       ]);
 
       const fetchedAnn = snapAnn.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
@@ -87,6 +88,7 @@ export function Announcements() {
         authorId: profile.uid,
         authorName: profile.fullName,
         courseId: annCourse,
+        institutionId,
         createdAt: serverTimestamp()
       });
       setAnnContent('');
@@ -106,9 +108,10 @@ export function Announcements() {
     try {
       await addDoc(collection(db, 'messages'), {
         senderId: profile.uid,
-        senderName: profile.name,
+        senderName: profile.name || profile.fullName,
         courseId: selectedCourseTopic,
         message: chatMessage,
+        institutionId,
         createdAt: serverTimestamp(),
         read: false
       });

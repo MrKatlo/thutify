@@ -11,7 +11,7 @@ interface DashboardProps {
 }
 
 export function Dashboard({ setActiveTab }: DashboardProps) {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isAdmin, institutionId } = useAuth();
   
   // Admin & Teacher stats
   const [stats, setStats] = useState({
@@ -51,20 +51,20 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
   }, [profile]);
 
   const fetchDashboardData = async () => {
-    if (!profile) return;
+    if (!profile || !institutionId) return;
     setLoading(true);
     try {
       if (profile.role === 'student') {
         // --- STUDENT DYNAMIC DASHBOARD ---
         const [enrollSnap, coursesSnap, attendanceSnap, submissionsSnap, assignmentsSnap, liveClassesSnap, announcementsSnap, paymentsSnap] = await Promise.all([
-          getDocs(query(collection(db, 'enrollments'), where('studentId', '==', profile.uid), where('status', '==', 'active'))),
-          getDocs(collection(db, 'courses')),
-          getDocs(query(collection(db, 'attendance'), where('studentId', '==', profile.uid))),
-          getDocs(query(collection(db, 'submissions'), where('studentId', '==', profile.uid))),
-          getDocs(collection(db, 'assignments')),
-          getDocs(collection(db, 'liveClasses')),
-          getDocs(collection(db, 'announcements')),
-          getDocs(query(collection(db, 'payments'), where('studentId', '==', profile.uid)))
+          getDocs(query(collection(db, 'enrollments'), where('institutionId', '==', institutionId), where('studentId', '==', profile.uid), where('status', '==', 'active'))),
+          getDocs(query(collection(db, 'courses'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'attendance'), where('institutionId', '==', institutionId), where('studentId', '==', profile.uid))),
+          getDocs(query(collection(db, 'submissions'), where('institutionId', '==', institutionId), where('studentId', '==', profile.uid))),
+          getDocs(query(collection(db, 'assignments'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'liveClasses'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'announcements'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'payments'), where('institutionId', '==', institutionId), where('studentId', '==', profile.uid)))
         ]);
 
         const activeCourseIds = enrollSnap.docs.map(d => d.data().courseId);
@@ -133,12 +133,12 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
       } else {
         // --- ADMIN & TEACHER DASHBOARD ---
         const [usersSnap, coursesSnap, paymentsSnap, liveClassesSnap, announcementsSnap, enrollmentsSnap] = await Promise.all([
-          getDocs(collection(db, 'users')),
-          getDocs(collection(db, 'courses')),
-          getDocs(collection(db, 'payments')),
-          getDocs(collection(db, 'liveClasses')),
-          getDocs(collection(db, 'announcements')),
-          getDocs(collection(db, 'enrollments'))
+          getDocs(query(collection(db, 'institutionUsers'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'courses'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'payments'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'liveClasses'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'announcements'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'enrollments'), where('institutionId', '==', institutionId)))
         ]);
 
         const allUsers = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() } as any));
@@ -215,8 +215,8 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
         allUsers.filter(u => u.role === 'student').slice(0, 2).forEach((data) => {
           activities.push({
             type: 'student',
-            title: `Student Profile: ${data.fullName}`,
-            meta: `${data.email} • Active`,
+            title: `Student Enrollment Update`,
+            meta: `UID: ${data.userId} • Active`,
             date: 'Recent'
           });
         });

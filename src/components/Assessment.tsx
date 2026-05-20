@@ -7,7 +7,7 @@ import { FileText, Plus, Clock, CheckCircle, Trash2, Edit2, User, ArrowLeft, Hel
 import { motion, AnimatePresence } from 'motion/react';
 
 export function Assessment() {
-  const { profile } = useAuth();
+  const { profile, institutionId } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'assignments' | 'submissions' | 'quizzes'>('assignments');
   const [loading, setLoading] = useState(true);
 
@@ -90,16 +90,16 @@ export function Assessment() {
   ];
 
   const fetchData = async () => {
-    if (!profile) return;
+    if (!profile || !institutionId) return;
     setLoading(true);
     try {
       const [snapAssign, snapSubmissions, snapQuizzes, snapCourses, snapStudents, snapQuizAttempts] = await Promise.all([
-        getDocs(collection(db, 'assignments')),
-        getDocs(collection(db, 'submissions')),
-        getDocs(collection(db, 'quizzes')),
-        getDocs(collection(db, 'courses')),
-        getDocs(collection(db, 'students')),
-        getDocs(collection(db, 'quizAttempts'))
+        getDocs(query(collection(db, 'assignments'), where('institutionId', '==', institutionId))),
+        getDocs(query(collection(db, 'submissions'), where('institutionId', '==', institutionId))),
+        getDocs(query(collection(db, 'quizzes'), where('institutionId', '==', institutionId))),
+        getDocs(query(collection(db, 'courses'), where('institutionId', '==', institutionId))),
+        getDocs(query(collection(db, 'institutionUsers'), where('institutionId', '==', institutionId), where('role', '==', 'student'))),
+        getDocs(query(collection(db, 'quizAttempts'), where('institutionId', '==', institutionId)))
       ]);
 
       const fetchedAssign = snapAssign.docs.map((doc: QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() } as any));
@@ -157,6 +157,7 @@ export function Assessment() {
           dueDate: assignDueDate,
           fileUrl: assignFileUrl,
           teacherId: profile.uid,
+          institutionId,
           createdAt: serverTimestamp()
         });
       }
@@ -256,6 +257,7 @@ export function Assessment() {
         timeLimit: Number(quizTimeLimit),
         questions: quizQuestions,
         teacherId: profile.uid,
+        institutionId,
         status: 'published',
         createdAt: serverTimestamp()
       });
@@ -289,6 +291,7 @@ export function Assessment() {
           courseName: activeQuizAttempt.courseName,
           studentId: profile.uid,
           studentName: profile.fullName,
+          institutionId,
           answers: quizAnswers,
           score: finalPercent,
           submittedAt: new Date(),
@@ -327,17 +330,18 @@ export function Assessment() {
         // Create new submission
         await addDoc(collection(db, 'submissions'), {
           assignmentId: submitAssignmentTarget.id,
-        assignmentTitle: submitAssignmentTarget.title,
-        studentId: profile.uid,
-        studentName: profile.fullName,
-        courseName: submitAssignmentTarget.courseName,
-        fileUrl: studentSubmitLink,
-        notes: studentSubmitNotes,
-        submittedAt: new Date(),
-        grade: '',
-        feedback: '',
-        status: 'pending'
-      });
+          assignmentTitle: submitAssignmentTarget.title,
+          studentId: profile.uid,
+          studentName: profile.fullName,
+          courseName: submitAssignmentTarget.courseName,
+          fileUrl: studentSubmitLink,
+          notes: studentSubmitNotes,
+          institutionId,
+          submittedAt: new Date(),
+          grade: '',
+          feedback: '',
+          status: 'pending'
+        });
         alert("Homework successfully submitted to classroom!");
       }
       

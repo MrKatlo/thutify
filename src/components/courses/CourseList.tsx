@@ -34,7 +34,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { CourseDetail } from './CourseDetail';
 
 export function CourseList() {
-  const { profile } = useAuth();
+  const { profile, isAdmin, institutionId } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [teachers, setTeachers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,12 +67,12 @@ export function CourseList() {
       // 2. Fetch Courses based on role
       let courseList: Course[] = [];
       
-      if (profile.role === 'admin') {
-        const q = query(collection(db, 'courses'), orderBy('createdAt', 'desc'));
+      if (isAdmin) {
+        const q = query(collection(db, 'courses'), where('institutionId', '==', institutionId), orderBy('createdAt', 'desc'));
         const snap = await getDocs(q);
         courseList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Course));
       } else if (profile.role === 'teacher') {
-        const q = query(collection(db, 'courses'), where('teacherId', '==', profile.uid));
+        const q = query(collection(db, 'courses'), where('institutionId', '==', institutionId), where('teacherId', '==', profile.uid));
         const snap = await getDocs(q);
         courseList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Course));
       } else if (profile.role === 'student') {
@@ -111,7 +111,7 @@ export function CourseList() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (profile?.role !== 'admin') return;
+    if (!isAdmin) return;
 
     try {
       const courseData = {
@@ -120,6 +120,7 @@ export function CourseList() {
         teacherId: assignedTeacherId,
         fee: Number(fee),
         status,
+        institutionId,
         updatedAt: serverTimestamp(),
       };
 

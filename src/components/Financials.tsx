@@ -7,7 +7,7 @@ import { DollarSign, Search, Plus, CheckCircle2, AlertCircle, X, Calendar, Arrow
 import { motion, AnimatePresence } from 'motion/react';
 
 export function Financials() {
-  const { profile } = useAuth();
+  const { profile, institutionId } = useAuth();
   const [payments, setPayments] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
@@ -31,7 +31,7 @@ export function Financials() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [institutionId]);
 
   const getMockStudents = () => [
     { id: 's1', fullName: 'Alex Johnson', email: 'alex@example.com', phone: '+1 234 567 890', courseId: 'Advanced Mathematics', status: 'active', paymentStatus: 'paid', totalFee: 1000, amountPaid: 1000, balance: 0, enrollmentDate: new Date() },
@@ -45,12 +45,13 @@ export function Financials() {
   ];
 
   const fetchData = async () => {
+    if (!institutionId) return;
     setLoading(true);
     try {
       const [snapPayments, snapStudents, snapCourses] = await Promise.all([
-        getDocs(query(collection(db, 'payments'), orderBy('createdAt', 'desc'))),
-        getDocs(collection(db, 'students')),
-        getDocs(collection(db, 'courses'))
+        getDocs(query(collection(db, 'payments'), where('institutionId', '==', institutionId), orderBy('createdAt', 'desc'))),
+        getDocs(query(collection(db, 'students'), where('institutionId', '==', institutionId))),
+        getDocs(query(collection(db, 'courses'), where('institutionId', '==', institutionId)))
       ]);
 
       const fetchedStudents = snapStudents.docs.map((doc: QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() }));
@@ -117,7 +118,8 @@ export function Financials() {
         await updateDoc(doc(db, 'students', student.id), {
           amountPaid: newStudentAmountPaid,
           balance: newStudentBalance,
-          paymentStatus: newStudentStatus
+          paymentStatus: newStudentStatus,
+          institutionId
         });
       } else {
         // Add flow
@@ -132,6 +134,7 @@ export function Financials() {
           status: paymentStatus,
           paymentMethod: method,
           referenceNumber: reference,
+          institutionId,
           paymentDate: new Date(),
           createdAt: serverTimestamp()
         });
@@ -144,7 +147,8 @@ export function Financials() {
         await updateDoc(doc(db, 'students', student.id), {
           amountPaid: updatedPaid,
           balance: updatedBalance,
-          paymentStatus: updatedStatus
+          paymentStatus: updatedStatus,
+          institutionId
         });
       }
 
@@ -185,7 +189,8 @@ export function Financials() {
         await updateDoc(doc(db, 'students', student.id), {
           amountPaid: revertedPaid,
           balance: revertedBalance,
-          paymentStatus: revertedStatus
+          paymentStatus: revertedStatus,
+          institutionId
         });
       }
       fetchData();

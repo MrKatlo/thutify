@@ -7,7 +7,7 @@ import { Calendar, Check, X, Clock, AlertCircle, Search } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export function Attendance() {
-  const { profile } = useAuth();
+  const { profile, institutionId } = useAuth();
   
   // Selection States
   const [courses, setCourses] = useState<any[]>([]);
@@ -54,8 +54,9 @@ export function Attendance() {
   ];
 
   const fetchCourses = async () => {
+    if (!institutionId) return;
     try {
-      const snap = await getDocs(collection(db, 'courses'));
+      const snap = await getDocs(query(collection(db, 'courses'), where('institutionId', '==', institutionId)));
       const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
       setCourses(list.length > 0 ? list : getMockCourses());
       if (list.length > 0) {
@@ -68,10 +69,11 @@ export function Attendance() {
   };
 
   const fetchStudentsAndAttendance = async () => {
+    if (!institutionId) return;
     setLoading(true);
     try {
       // 1. Get students enrolled in selected course
-      const qStudents = query(collection(db, 'students'), where('courseId', '==', selectedCourse));
+      const qStudents = query(collection(db, 'enrollments'), where('institutionId', '==', institutionId), where('courseId', '==', selectedCourse));
       const snapStudents = await getDocs(qStudents);
       const studentList = snapStudents.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
       const activeStudents = studentList.length > 0 ? studentList : getMockStudents();
@@ -80,6 +82,7 @@ export function Attendance() {
       // 2. Get attendance records for this course and date
       const qAttendance = query(
         collection(db, 'attendance'),
+        where('institutionId', '==', institutionId),
         where('courseId', '==', selectedCourse),
         where('date', '==', selectedDate)
       );
@@ -118,6 +121,7 @@ export function Attendance() {
         // Update record
         const docRef = doc(db, 'attendance', existing.id || `att-${studentId}-${selectedDate}`);
         await setDoc(docRef, {
+          institutionId,
           courseId: selectedCourse,
           teacherId: profile?.uid || 't1',
           studentId,
@@ -129,6 +133,7 @@ export function Attendance() {
         // Create new record
         const docId = `att-${studentId}-${selectedDate}`;
         await setDoc(doc(db, 'attendance', docId), {
+          institutionId,
           courseId: selectedCourse,
           teacherId: profile?.uid || 't1',
           studentId,

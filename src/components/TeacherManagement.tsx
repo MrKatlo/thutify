@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile, TeacherProfile } from '../types';
 
 export function TeacherManagement() {
+  const { institutionId } = useAuth();
   const [teachers, setTeachers] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,18 +40,24 @@ export function TeacherManagement() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [institutionId]);
 
   const fetchData = async () => {
+    if (!institutionId) return;
     setLoading(true);
     try {
       // 1. Fetch Courses
-      const courseSnap = await getDocs(collection(db, 'courses'));
+      const courseSnap = await getDocs(query(collection(db, 'courses'), where('institutionId', '==', institutionId)));
       setCourses(courseSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       // 2. Fetch Users with role 'teacher'
-      const userSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'teacher')));
-      const teacherUsers = userSnap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile));
+      const instUserSnap = await getDocs(query(collection(db, 'institutionUsers'), where('institutionId', '==', institutionId), where('role', '==', 'teacher')));
+      const teacherUids = new Set(instUserSnap.docs.map(d => d.data().userId));
+
+      const allUsersSnap = await getDocs(collection(db, 'users'));
+      const teacherUsers = allUsersSnap.docs
+        .filter(d => teacherUids.has(d.id))
+        .map(d => ({ uid: d.id, ...d.data() } as UserProfile));
 
       // 3. Fetch Teacher Profiles and Join
       const combined = await Promise.all(teacherUsers.map(async (user) => {

@@ -40,7 +40,7 @@ import { UserProfile, StudentProfile, Enrollment, Course } from '../types';
 import { format } from 'date-fns';
 
 export function StudentManagement() {
-  const { profile } = useAuth();
+  const { profile, isAdmin, institutionId } = useAuth();
   
   // Data lists
   const [students, setStudents] = useState<any[]>([]); // Combined view
@@ -65,23 +65,28 @@ export function StudentManagement() {
   }, [profile]);
 
   const fetchData = async () => {
-    if (!profile) return;
+    if (!profile || !institutionId) return;
     setLoading(true);
     try {
       // 1. Fetch Courses
-      const courseSnap = await getDocs(collection(db, 'courses'));
+      const courseSnap = await getDocs(query(collection(db, 'courses'), where('institutionId', '==', institutionId)));
       const courseList = courseSnap.docs.map(d => ({ id: d.id, ...d.data() } as Course));
       setCourses(courseList);
 
-      // 2. Fetch Institutional Students (users with role 'student')
-      const userSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'student')));
-      const studentUsers = userSnap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile));
+      // 2. Fetch Institutional Students
+      const instUserSnap = await getDocs(query(collection(db, 'institutionUsers'), where('institutionId', '==', institutionId), where('role', '==', 'student')));
+      const studentUids = new Set(instUserSnap.docs.map(d => d.data().userId));
+      
+      const allUsersSnap = await getDocs(collection(db, 'users'));
+      const studentUsers = allUsersSnap.docs
+        .filter(d => studentUids.has(d.id))
+        .map(d => ({ uid: d.id, ...d.data() } as UserProfile));
       setAvailableStudents(studentUsers);
 
       // 3. Fetch Enrollments and Profiles
       let enrollments: Enrollment[] = [];
-      if (profile.role === 'admin') {
-        const enrollSnap = await getDocs(collection(db, 'enrollments'));
+      if (isAdmin) {
+        const enrollSnap = await getDocs(query(collection(db, 'enrollments'), where('institutionId', '==', institutionId)));
         enrollments = enrollSnap.docs.map(d => ({ id: d.id, ...d.data() } as Enrollment));
       } else if (profile.role === 'teacher') {
         // Teachers see students in their courses
@@ -134,6 +139,7 @@ export function StudentManagement() {
       batch.set(enrollRef, {
         studentId: enrollingUser.uid,
         courseId: selectedCourseId,
+        institutionId,
         status: 'active',
         enrolledAt: serverTimestamp()
       });
@@ -230,7 +236,7 @@ export function StudentManagement() {
             {profile?.role === 'admin' ? 'Manage institutional enrollments and academic records.' : 'Track students enrolled in your assigned courses.'}
           </p>
         </div>
-        {profile?.role === 'admin' && (
+        {isAdmin && (
           <Button onClick={() => setShowEnrollModal(true)} className="gap-2 bg-black text-white hover:bg-gray-800">
             <UserPlus className="w-4 h-4" /> Enroll Student
           </Button>
@@ -324,7 +330,7 @@ export function StudentManagement() {
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    {profile?.role === 'admin' && (
+                    {isAdmin && (
                       <button onClick={() => handleDrop(s.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
                         <Trash2 className="w-4 h-4" />
                       </button>

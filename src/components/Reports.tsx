@@ -10,7 +10,7 @@ import { Button } from './ui/Card';
 import { useAuth } from '../hooks/useAuth';
 
 export function Reports() {
-  const { profile } = useAuth();
+  const { profile, institutionId } = useAuth();
   
   // Data States
   const [payments, setPayments] = useState<any[]>([]);
@@ -51,15 +51,16 @@ export function Reports() {
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!institutionId) return;
       setLoading(true);
       try {
         const [paySnap, userSnap, courseSnap, attSnap, subSnap, quizSnap] = await Promise.all([
-          getDocs(collection(db, 'payments')),
-          getDocs(collection(db, 'students')),
-          getDocs(collection(db, 'courses')),
-          getDocs(collection(db, 'attendance')),
-          getDocs(collection(db, 'submissions')),
-          getDocs(collection(db, 'quizzes'))
+          getDocs(query(collection(db, 'payments'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'students'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'courses'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'attendance'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'submissions'), where('institutionId', '==', institutionId))),
+          getDocs(query(collection(db, 'quizzes'), where('institutionId', '==', institutionId)))
         ]);
 
         const fetchedPayments = paySnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -87,7 +88,7 @@ export function Reports() {
       }
     };
     fetchData();
-  }, []);
+  }, [institutionId]);
 
   if (loading) {
     return (
