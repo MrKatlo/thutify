@@ -29,7 +29,8 @@ export function Sidebar({
     { id: 'financials', label: 'Financials', icon: DollarSign, roles: ['admin', 'owner'] },
     { id: 'reports', label: 'Reports', icon: BarChart2, roles: ['admin', 'owner', 'teacher', 'student'] },
     { id: 'announcements', label: 'Announcements', icon: Bell, roles: ['admin', 'owner', 'teacher', 'student'] },
-    { id: 'tracker', label: 'Admin Tracker', icon: ShieldCheck, roles: ['admin', 'owner'] },
+    { id: 'modules', label: 'Module Management', icon: BookOpen, roles: ['admin', 'owner', 'teacher'] },
+    { id: 'lessons', label: 'Lesson Management', icon: BookOpen, roles: ['admin', 'owner', 'teacher'] },
   ];
 
   const filteredMenu = menuItems.filter(item => 

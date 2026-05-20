@@ -9,6 +9,8 @@ import { StudentManagement } from './components/StudentManagement';
 import { TeacherManagement } from './components/TeacherManagement';
 import { UserManagement } from './components/UserManagement';
 import { Reports } from './components/Reports';
+import { ModuleManagement } from './components/ModuleManagement';
+import { LessonManagement } from './components/LessonManagement';
 import { AdminCompletionTracker } from './components/AdminCompletionTracker';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, AlertCircle, LogOut, BookOpen } from 'lucide-react';
@@ -282,6 +284,10 @@ export default function App() {
                           return isAdmin ? <TeacherManagement /> : <Dashboard setActiveTab={setActiveTab} />;
                         case 'users':
                           return isAdmin ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                        case 'modules':
+                          return (isAdmin || isTeacher) ? <ModuleManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                        case 'lessons':
+                          return (isAdmin || isTeacher) ? <LessonManagement /> : <Dashboard setActiveTab={setActiveTab} />;
                         case 'reports':
                           return <Reports />;
                         case 'tracker':
