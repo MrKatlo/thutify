@@ -25,7 +25,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { format, addDays } from 'date-fns';
 
 export function UserManagement() {
-  const { profile } = useAuth();
+  const { profile, institutionId } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [invites, setInvites] = useState<UserInvite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +45,7 @@ export function UserManagement() {
   useEffect(() => {
     fetchData();
     fetchCourses();
-  }, []);
+  }, [institutionId]);
 
   const fetchCourses = async () => {
     try {
@@ -57,12 +57,13 @@ export function UserManagement() {
   };
 
   const fetchData = async () => {
+    if (!institutionId) return;
     setLoading(true);
     try {
       const [userSnap, inviteSnap, appSnap] = await Promise.all([
-        getDocs(query(collection(db, 'users'), orderBy('createdAt', 'desc'))),
-        getDocs(query(collection(db, 'invites'), orderBy('expiresAt', 'desc'))),
-        getDocs(query(collection(db, 'applications'), orderBy('createdAt', 'desc')))
+        getDocs(query(collection(db, 'users'), where('institutionId', '==', institutionId), orderBy('createdAt', 'desc'))),
+        getDocs(query(collection(db, 'invites'), where('institutionId', '==', institutionId), orderBy('expiresAt', 'desc'))),
+        getDocs(query(collection(db, 'applications'), where('institutionId', '==', institutionId), orderBy('createdAt', 'desc')))
       ]);
 
       setUsers(userSnap.docs.map((doc: QueryDocumentSnapshot) => ({ uid: doc.id, ...doc.data() } as UserProfile)));
@@ -83,7 +84,6 @@ export function UserManagement() {
     try {
       const batch = writeBatch(db);
 
-      // 1. Create the pending user document (using email as temporary ID)
       const userRef = doc(db, 'users', `pending_${inviteEmail}`);
       batch.set(userRef, {
         fullName: inviteFullName,
@@ -91,11 +91,11 @@ export function UserManagement() {
         role: inviteRole,
         status: 'pending',
         createdBy: profile?.uid,
+        institutionId,
         createdAt: serverTimestamp(),
         assignedCourses: selectedCourses
       });
 
-      // 2. Create the invite with all details
       const inviteRef = doc(collection(db, 'invites'));
       batch.set(inviteRef, {
         email: inviteEmail,
@@ -106,6 +106,7 @@ export function UserManagement() {
         status: 'pending',
         expiresAt: addDays(new Date(), 7),
         createdBy: profile?.uid,
+        institutionId,
         createdAt: serverTimestamp(),
         pendingUserId: userRef.id
       });
