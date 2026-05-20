@@ -24,6 +24,9 @@ export function InstitutionSignupPage() {
   const [checkingSlug, setCheckingSlug] = useState(false);
   const [slugStatus, setSlugStatus] = useState<'none' | 'valid' | 'invalid'>('none');
   
+  // Custom Validation State
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
   // Custom Toast State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -32,6 +35,40 @@ export function InstitutionSignupPage() {
     setTimeout(() => {
       setToast(null);
     }, 4000);
+  };
+
+  const getFieldError = (field: string): string => {
+    switch (field) {
+      case 'instName':
+        if (!instName.trim()) return 'Institution name is required';
+        if (instName.trim().length < 2) return 'Institution name must be at least 2 characters';
+        return '';
+      case 'instSlug':
+        if (!instSlug.trim()) return 'Portal URL slug is required';
+        if (instSlug.trim().length < 3) return 'Portal URL slug must be at least 3 characters';
+        if (slugStatus === 'invalid') return 'This portal URL slug is already taken';
+        if (slugStatus === 'none' && !checkingSlug) return 'Please enter a unique URL slug';
+        return '';
+      case 'country':
+        if (!country.trim()) return 'Country is required';
+        return '';
+      case 'ownerName':
+        if (!ownerName.trim()) return 'Owner full name is required';
+        return '';
+      case 'phone':
+        if (!phone.trim()) return 'Owner phone number is required';
+        return '';
+      case 'ownerEmail':
+        if (!ownerEmail.trim()) return 'Email address is required';
+        if (!/\S+@\S+\.\S+/.test(ownerEmail)) return 'Please enter a valid email address';
+        return '';
+      case 'password':
+        if (!password) return 'Admin password is required';
+        if (password.length < 6) return 'Password must be at least 6 characters';
+        return '';
+      default:
+        return '';
+    }
   };
 
   const handleNameChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -88,12 +125,32 @@ export function InstitutionSignupPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (slugStatus !== 'valid') {
-      showToast("Please enter a unique, valid institution slug.", "error");
+
+    // Mark all fields as touched to trigger visual validation
+    const requiredFields = ['instName', 'instSlug', 'country', 'ownerName', 'phone', 'ownerEmail', 'password'];
+    const newTouched: Record<string, boolean> = {};
+    requiredFields.forEach(field => {
+      newTouched[field] = true;
+    });
+    setTouched(newTouched);
+
+    // Collect errors
+    const errorsList = requiredFields
+      .map(field => getFieldError(field))
+      .filter(error => error !== '');
+
+    if (errorsList.length > 0) {
+      showToast(errorsList[0], "error");
       return;
     }
-    if (password.length < 6) {
-      showToast("Password must be at least 6 characters.", "error");
+
+    if (checkingSlug) {
+      showToast("Checking portal URL slug availability...", "error");
+      return;
+    }
+
+    if (slugStatus !== 'valid') {
+      showToast("Please enter a unique, valid institution slug.", "error");
       return;
     }
 
@@ -174,6 +231,18 @@ export function InstitutionSignupPage() {
     }
   };
 
+  const handleBlur = (field: string) => {
+    setTouched(prev => ({ ...prev, [field]: true }));
+  };
+
+  const getInputClass = (fieldName: string, baseClass = "w-full px-4 py-3 bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 text-sm font-medium transition-all") => {
+    const hasError = touched[fieldName] && getFieldError(fieldName);
+    if (hasError) {
+      return `${baseClass} border-red-300 focus:border-red-500 focus:ring-red-500/10 text-red-900 placeholder-red-300`;
+    }
+    return `${baseClass} border-gray-100 focus:border-black`;
+  };
+
   return (
     <div className="min-h-screen bg-[#fbfbfa] flex items-center justify-center p-4 font-sans selection:bg-black selection:text-white relative overflow-x-hidden">
       {/* Toast Alert */}
@@ -200,12 +269,12 @@ export function InstitutionSignupPage() {
           <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-black/10 cursor-pointer hover:scale-105 transition-transform" onClick={() => navigate('/')}>
             <BookOpen className="text-white w-7 h-7" />
           </div>
-          <h1 className="text-3xl font-black tracking-tight text-gray-900">Deploy Your Academy</h1>
-          <p className="text-gray-500 text-sm font-semibold mt-1">Spin up an isolated, branded learning portal in minutes.</p>
+          <h1 className="text-3xl font-black tracking-tight text-gray-900">Create an Institution</h1>
+          <p className="text-gray-500 text-sm font-semibold mt-1">Set up your school or academy and start teaching in minutes.</p>
         </div>
 
         <Card className="p-8 md:p-10 shadow-xl border-gray-100 bg-white">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6" noValidate>
             
             {/* Section 1: Institution Info */}
             <div className="space-y-4">
@@ -217,24 +286,28 @@ export function InstitutionSignupPage() {
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Institution Name</label>
                   <input
-                    required
                     type="text"
                     value={instName}
                     onChange={handleNameChange}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm font-medium"
+                    onBlur={() => handleBlur('instName')}
+                    className={getInputClass('instName')}
                     placeholder="e.g. Brain Education"
                   />
+                  {touched.instName && getFieldError('instName') && (
+                    <p className="text-xs text-red-500 font-semibold mt-1 ml-1">{getFieldError('instName')}</p>
+                  )}
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Portal URL Slug</label>
                   <div className="relative">
                     <input
-                      required
                       type="text"
                       value={instSlug}
                       onChange={handleSlugChange}
+                      onBlur={() => handleBlur('instSlug')}
                       className={`w-full pl-4 pr-10 py-3 bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 text-sm font-semibold transition-all ${
+                        touched.instSlug && getFieldError('instSlug') ? 'border-red-300 focus:border-red-500 focus:ring-red-500/10 text-red-900 placeholder-red-300' :
                         slugStatus === 'valid' ? 'border-green-200 focus:border-green-500' :
                         slugStatus === 'invalid' ? 'border-red-200 focus:border-red-500' : 'border-gray-100 focus:border-black'
                       }`}
@@ -242,13 +315,17 @@ export function InstitutionSignupPage() {
                     />
                     <div className="absolute right-3 top-3.5">
                       {checkingSlug ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" /> :
-                       slugStatus === 'valid' ? <Check className="w-4 h-4 text-green-500 font-bold" /> :
-                       slugStatus === 'invalid' ? <AlertCircle className="w-4 h-4 text-red-500" /> : null}
+                       slugStatus === 'valid' && !(touched.instSlug && getFieldError('instSlug')) ? <Check className="w-4 h-4 text-green-500 font-bold" /> :
+                       (slugStatus === 'invalid' || (touched.instSlug && getFieldError('instSlug'))) ? <AlertCircle className="w-4 h-4 text-red-500" /> : null}
                     </div>
                   </div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">
-                    Your portal link will be: <span className="text-black font-semibold">/{instSlug || 'your-slug'}/login</span>
-                  </p>
+                  {touched.instSlug && getFieldError('instSlug') ? (
+                    <p className="text-xs text-red-500 font-semibold mt-1 ml-1">{getFieldError('instSlug')}</p>
+                  ) : (
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">
+                      Your portal link will be: <span className="text-black font-semibold">/{instSlug || 'your-slug'}/login</span>
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -272,14 +349,17 @@ export function InstitutionSignupPage() {
                   <div className="relative">
                     <Globe className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
                     <input
-                      required
                       type="text"
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm font-medium"
+                      onBlur={() => handleBlur('country')}
+                      className={getInputClass('country', "w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 text-sm font-medium transition-all")}
                       placeholder="e.g. United States"
                     />
                   </div>
+                  {touched.country && getFieldError('country') && (
+                    <p className="text-xs text-red-500 font-semibold mt-1 ml-1">{getFieldError('country')}</p>
+                  )}
                 </div>
 
                 <div className="space-y-1">
@@ -307,14 +387,17 @@ export function InstitutionSignupPage() {
                   <div className="relative">
                     <User className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
                     <input
-                      required
                       type="text"
                       value={ownerName}
                       onChange={(e) => setOwnerName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm font-medium"
+                      onBlur={() => handleBlur('ownerName')}
+                      className={getInputClass('ownerName', "w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 text-sm font-medium transition-all")}
                       placeholder="John Doe"
                     />
                   </div>
+                  {touched.ownerName && getFieldError('ownerName') && (
+                    <p className="text-xs text-red-500 font-semibold mt-1 ml-1">{getFieldError('ownerName')}</p>
+                  )}
                 </div>
 
                 <div className="space-y-1">
@@ -322,14 +405,17 @@ export function InstitutionSignupPage() {
                   <div className="relative">
                     <Phone className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
                     <input
-                      required
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm font-medium"
+                      onBlur={() => handleBlur('phone')}
+                      className={getInputClass('phone', "w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 text-sm font-medium transition-all")}
                       placeholder="+1 (555) 000-0000"
                     />
                   </div>
+                  {touched.phone && getFieldError('phone') && (
+                    <p className="text-xs text-red-500 font-semibold mt-1 ml-1">{getFieldError('phone')}</p>
+                  )}
                 </div>
               </div>
 
@@ -339,14 +425,17 @@ export function InstitutionSignupPage() {
                   <div className="relative">
                     <Mail className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
                     <input
-                      required
                       type="email"
                       value={ownerEmail}
                       onChange={(e) => setOwnerEmail(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm font-medium"
+                      onBlur={() => handleBlur('ownerEmail')}
+                      className={getInputClass('ownerEmail', "w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 text-sm font-medium transition-all")}
                       placeholder="owner@academy.edu"
                     />
                   </div>
+                  {touched.ownerEmail && getFieldError('ownerEmail') && (
+                    <p className="text-xs text-red-500 font-semibold mt-1 ml-1">{getFieldError('ownerEmail')}</p>
+                  )}
                 </div>
 
                 <div className="space-y-1">
@@ -354,24 +443,27 @@ export function InstitutionSignupPage() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
                     <input
-                      required
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 focus:border-black transition-all text-sm font-medium"
+                      onBlur={() => handleBlur('password')}
+                      className={getInputClass('password', "w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 text-sm font-medium transition-all")}
                       placeholder="••••••••"
                     />
                   </div>
+                  {touched.password && getFieldError('password') && (
+                    <p className="text-xs text-red-500 font-semibold mt-1 ml-1">{getFieldError('password')}</p>
+                  )}
                 </div>
               </div>
             </div>
 
             <Button
               type="submit"
-              disabled={loading || slugStatus !== 'valid'}
+              disabled={loading}
               className="w-full py-4 text-base font-bold rounded-2xl shadow-xl shadow-black/10 mt-6"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto text-white" /> : 'Launch Institution Portal'}
+              {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto text-white" /> : 'Create Institution'}
             </Button>
           </form>
         </Card>

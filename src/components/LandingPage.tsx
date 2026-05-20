@@ -53,7 +53,7 @@ export function LandingPage() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="text-lg text-gray-500 max-w-xl mx-auto lg:mx-0 leading-relaxed"
           >
-            Transform your academy, college, or corporation with LearnFlow. Spin up your branded educational portal in minutes with course builders, student portals, and complete billing systems.
+            Transform your academy, college, or corporation with LearnFlow. Create your custom educational portal easily with course builders, student portals, and complete billing systems.
           </motion.p>
 
           <motion.div 
@@ -90,8 +90,8 @@ export function LandingPage() {
             <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center text-white shadow-md shadow-black/10 group-hover:scale-105 transition-transform">
               <Shield className="w-5 h-5" />
             </div>
-            <h3 className="font-extrabold text-lg text-gray-900">Multi-Tenant Isolation</h3>
-            <p className="text-sm text-gray-500 leading-relaxed">Each academy lives in its own sandboxed space, guaranteeing secure database separation and custom branding parameters.</p>
+            <h3 className="font-extrabold text-lg text-gray-900">Your Brand, Your Campus</h3>
+            <p className="text-sm text-gray-500 leading-relaxed">Keep your school's unique identity. Customize colors, use your logo, and keep all student data fully secure and private.</p>
           </div>
 
           <div className="bg-white border border-gray-100 p-8 rounded-3xl shadow-sm space-y-4 hover:border-gray-200 transition-all group">
@@ -99,7 +99,7 @@ export function LandingPage() {
               <GraduationCap className="w-5 h-5" />
             </div>
             <h3 className="font-extrabold text-lg text-gray-900">Rich Course Builder</h3>
-            <p className="text-sm text-gray-500 leading-relaxed">Easily deploy lessons, upload resource materials, schedule virtual classrooms, and grade student submissions in real-time.</p>
+            <p className="text-sm text-gray-500 leading-relaxed">Easily publish lessons, upload resource materials, schedule virtual classrooms, and grade student submissions in real-time.</p>
           </div>
 
           <div className="bg-white border border-gray-100 p-8 rounded-3xl shadow-sm space-y-4 hover:border-gray-200 transition-all group">
@@ -107,7 +107,7 @@ export function LandingPage() {
               <Award className="w-5 h-5" />
             </div>
             <h3 className="font-extrabold text-lg text-gray-900">Branded Certificates</h3>
-            <p className="text-sm text-gray-500 leading-relaxed">Reward successful graduates with cryptographic downloadable PDF diplomas bearing your institution's official logo.</p>
+            <p className="text-sm text-gray-500 leading-relaxed">Reward successful graduates with official, downloadable PDF certificates branded with your school's logo.</p>
           </div>
 
           <div className="bg-white border border-gray-100 p-8 rounded-3xl shadow-sm space-y-4 hover:border-gray-200 transition-all group">
