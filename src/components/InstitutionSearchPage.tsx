@@ -115,7 +115,7 @@ export function InstitutionSearchPage() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05, duration: 0.3 }}
-                      onClick={() => navigate(`/${inst.slug}/student-signup`)}
+                      onClick={() => navigate(`/${inst.slug}/login`)}
                       className="p-4 bg-white border border-gray-100 hover:border-black rounded-2xl flex items-center justify-between cursor-pointer shadow-sm hover:shadow-md transition-all group"
                     >
                       <div className="flex items-center gap-4">

@@ -153,10 +153,13 @@ export default function App() {
       return <PlatformAdminDashboard />;
     case 'institution-login':
     case 'teacher-login':
-      return <InstitutionLoginPage institution={activeInstitution!} />;
+      if (!activeInstitution) return null;
+      return <InstitutionLoginPage institution={activeInstitution} />;
     case 'student-signup':
-      return <StudentSignupPage institution={activeInstitution!} />;
+      if (!activeInstitution) return null;
+      return <StudentSignupPage institution={activeInstitution} />;
     case 'institution-admin':
+      if (!activeInstitution) return null;
       // Admin dashboard requires authentication
       if (!user) {
         return <InstitutionLoginPage institution={activeInstitution!} />;
