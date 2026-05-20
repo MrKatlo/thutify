@@ -118,6 +118,8 @@ export function InstitutionSignupPage() {
       }
     } catch (err) {
       console.error("Error checking slug uniqueness:", err);
+      // Fallback to valid to prevent blocking the user if background database check fails
+      setSlugStatus('valid');
     } finally {
       setCheckingSlug(false);
     }
