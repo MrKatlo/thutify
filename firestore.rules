@@ -66,8 +66,7 @@ service cloud.firestore {
 
     // 1. institutions
     match /institutions/{instId} {
-      allow get: if true; // Publicly get credentials for branded route loading
-      allow list: if isPlatformAdmin();
+      allow read: if true; // Publicly read/query institutions for branded route loading & school search
       allow create: if isSignedIn();
       allow update: if isPlatformAdmin() || (isSignedIn() && resource.data.ownerUserId == request.auth.uid && request.resource.data.ownerUserId == request.auth.uid);
       allow delete: if isPlatformAdmin();
