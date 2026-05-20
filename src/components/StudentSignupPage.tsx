@@ -1,7 +1,7 @@
 import { useState, FormEvent } from 'react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth, db } from '../lib/firebase';
-import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { doc, writeBatch, serverTimestamp, collection } from 'firebase/firestore';
 import { BookOpen, User, Mail, Lock, Phone, ShieldCheck, Check, Loader2, AlertCircle, ArrowLeft, Hourglass } from 'lucide-react';
 import { Button, Card } from './ui/Card';
 import { navigate } from '../hooks/useRouter';

@@ -9,7 +9,7 @@ import { StudentManagement } from './components/StudentManagement';
 import { UserManagement } from './components/UserManagement';
 import { Reports } from './components/Reports';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu, AlertCircle, LogOut } from 'lucide-react';
+import { Menu, AlertCircle, LogOut, BookOpen } from 'lucide-react';
 import { Button } from './components/ui/Card';
 import { logout, db } from './lib/firebase';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
