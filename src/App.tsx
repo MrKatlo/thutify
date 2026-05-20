@@ -6,6 +6,7 @@ import { CourseList } from './components/courses/CourseList';
 import { Announcements } from './components/Announcements';
 import { Financials } from './components/Financials';
 import { StudentManagement } from './components/StudentManagement';
+import { TeacherManagement } from './components/TeacherManagement';
 import { UserManagement } from './components/UserManagement';
 import { Reports } from './components/Reports';
 import { AdminCompletionTracker } from './components/AdminCompletionTracker';
@@ -277,6 +278,8 @@ export default function App() {
                           return isAdmin ? <Financials /> : <Dashboard setActiveTab={setActiveTab} />;
                         case 'students':
                           return (isAdmin || isTeacher) ? <StudentManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                        case 'teachers':
+                          return isAdmin ? <TeacherManagement /> : <Dashboard setActiveTab={setActiveTab} />;
                         case 'users':
                           return isAdmin ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
                         case 'reports':

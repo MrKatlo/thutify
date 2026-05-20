@@ -23,7 +23,8 @@ export function Sidebar({
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, roles: ['admin', 'owner', 'teacher', 'student'] },
     { id: 'courses', label: 'Courses', icon: BookOpen, roles: ['admin', 'owner', 'teacher', 'student'] },
-    { id: 'students', label: 'Student Directory', icon: Users, roles: ['admin', 'owner', 'teacher'] },
+    { id: 'students', label: 'Student Management', icon: Users, roles: ['admin', 'owner', 'teacher'] },
+    { id: 'teachers', label: 'Teacher Management', icon: Users, roles: ['admin', 'owner'] },
     { id: 'users', label: 'User Management', icon: ShieldCheck, roles: ['admin', 'owner'] },
     { id: 'financials', label: 'Financials', icon: DollarSign, roles: ['admin', 'owner'] },
     { id: 'reports', label: 'Reports', icon: BarChart2, roles: ['admin', 'owner', 'teacher', 'student'] },
