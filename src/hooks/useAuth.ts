@@ -163,6 +163,7 @@ export function useAuth(activeInstitutionId?: string | null) {
     isOwner: profile?.role === 'owner',
     isTeacher: profile?.role === 'teacher',
     isStudent: profile?.role === 'student',
-    isPlatformAdmin: !!profile?.isPlatformAdmin
+    isPlatformAdmin: !!profile?.isPlatformAdmin,
+    institutionId: currentInstId
   };
 }

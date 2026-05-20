@@ -8,6 +8,7 @@ import { Financials } from './components/Financials';
 import { StudentManagement } from './components/StudentManagement';
 import { UserManagement } from './components/UserManagement';
 import { Reports } from './components/Reports';
+import { AdminCompletionTracker } from './components/AdminCompletionTracker';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, AlertCircle, LogOut, BookOpen } from 'lucide-react';
 import { Button } from './components/ui/Card';
@@ -280,6 +281,8 @@ export default function App() {
                           return isAdmin ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
                         case 'reports':
                           return <Reports />;
+                        case 'tracker':
+                          return isAdmin ? <AdminCompletionTracker /> : <Dashboard setActiveTab={setActiveTab} />;
                         default:
                           return (
                             <div className="p-8 flex items-center justify-center min-h-[50vh]">
