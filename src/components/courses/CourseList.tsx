@@ -1,20 +1,5 @@
-import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
-import { 
-  collection, 
-  query, 
-  getDocs, 
-  addDoc, 
-  serverTimestamp, 
-  orderBy, 
-  deleteDoc, 
-  doc, 
-  updateDoc, 
-  QueryDocumentSnapshot,
-  where
-} from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
+import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { Course, Enrollment, UserProfile } from '../../types';
 import { Card, Button } from '../ui/Card';
 import { 
   Plus, 
@@ -25,22 +10,20 @@ import {
   ChevronRight, 
   X, 
   DollarSign, 
-  Loader2, 
-  ShieldCheck, 
-  Users,
   Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CourseDetail } from './CourseDetail';
+import * as cfApi from '../../services/cfApi';
 
 export function CourseList() {
-  const { profile, isAdmin, institutionId } = useAuth();
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [teachers, setTeachers] = useState<UserProfile[]>([]);
+  const { profile, institutionId } = useAuth();
+  const [courses, setCourses] = useState<any[]>([]);
+  const [teachers, setTeachers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
-  const [viewingCourse, setViewingCourse] = useState<Course | null>(null);
+  const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
+  const [viewingCourse, setViewingCourse] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
   // Form state
@@ -50,50 +33,34 @@ export function CourseList() {
   const [fee, setFee] = useState<number>(0);
   const [status, setStatus] = useState<'active' | 'draft' | 'archived'>('draft');
 
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'owner';
+
   useEffect(() => {
     fetchData();
-  }, [profile]);
+  }, [profile, institutionId]);
 
   const fetchData = async () => {
-    if (!profile) return;
+    if (!institutionId) return;
     setLoading(true);
     try {
-      // 1. Fetch Teachers (for Admin to assign)
-      if (profile.role === 'admin') {
-        const teacherSnap = await getDocs(query(collection(db, 'users'), where('role', '==', 'teacher')));
-        setTeachers(teacherSnap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile)));
-      }
-
-      // 2. Fetch Courses based on role
-      let courseList: Course[] = [];
+      const [fetchedCourses, fetchedTeachers] = await Promise.all([
+        cfApi.listCourses(institutionId),
+        cfApi.getInstitutionMembers(institutionId, 'teacher')
+      ]);
       
-      if (isAdmin) {
-        const q = query(collection(db, 'courses'), where('institutionId', '==', institutionId), orderBy('createdAt', 'desc'));
-        const snap = await getDocs(q);
-        courseList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Course));
-      } else if (profile.role === 'teacher') {
-        const q = query(collection(db, 'courses'), where('institutionId', '==', institutionId), where('teacherId', '==', profile.uid));
-        const snap = await getDocs(q);
-        courseList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Course));
-      } else if (profile.role === 'student') {
-        // Institutional: Only enrolled courses
-        const enrollSnap = await getDocs(query(
-          collection(db, 'enrollments'), 
-          where('studentId', '==', profile.uid),
-          where('status', '==', 'active')
-        ));
-        const courseIds = enrollSnap.docs.map(d => (d.data() as Enrollment).courseId);
-        
-        if (courseIds.length > 0) {
-          // Firebase in queries are limited to 10 items, but for this demo we'll assume it works
-          const courseSnap = await getDocs(query(collection(db, 'courses'), where('__name__', 'in', courseIds)));
-          courseList = courseSnap.docs.map(d => ({ id: d.id, ...d.data() } as Course));
-        }
-      }
+      setTeachers(fetchedTeachers);
       
-      setCourses(courseList);
+      if (profile?.role === 'student') {
+        const enrollments = await cfApi.listEnrollments(institutionId, undefined, profile.uid);
+        const enrolledIds = enrollments.map((e: any) => e.course_id);
+        setCourses(fetchedCourses.filter((c: any) => enrolledIds.includes(c.id)));
+      } else if (profile?.role === 'teacher') {
+        setCourses(fetchedCourses.filter((c: any) => c.teacher_id === profile.uid));
+      } else {
+        setCourses(fetchedCourses);
+      }
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, 'courses');
+      console.error("Fetch courses failed:", error);
     } finally {
       setLoading(false);
     }
@@ -111,41 +78,35 @@ export function CourseList() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!isAdmin) return;
+    if (!isAdmin || !institutionId) return;
 
     try {
       const courseData = {
         title,
         description,
-        teacherId: assignedTeacherId,
+        teacher_id: assignedTeacherId,
         fee: Number(fee),
         status,
-        institutionId,
-        updatedAt: serverTimestamp(),
       };
 
       if (isEditing && selectedCourse) {
-        await updateDoc(doc(db, 'courses', selectedCourse.id), courseData);
+        await cfApi.updateCourse(selectedCourse.id, courseData);
       } else {
-        await addDoc(collection(db, 'courses'), {
-          ...courseData,
-          createdAt: serverTimestamp(),
-          modules: []
-        });
+        await cfApi.createCourse(institutionId, courseData);
       }
       resetForm();
       setShowForm(false);
       fetchData();
     } catch (error) {
-      handleFirestoreError(error, isEditing ? OperationType.UPDATE : OperationType.CREATE, 'courses');
+      console.error("Save course failed:", error);
     }
   };
 
-  const handleEdit = (course: Course) => {
+  const handleEdit = (course: any) => {
     setSelectedCourse(course);
     setTitle(course.title);
     setDescription(course.description);
-    setAssignedTeacherId(course.teacherId);
+    setAssignedTeacherId(course.teacher_id);
     setFee(course.fee);
     setStatus(course.status);
     setIsEditing(true);
@@ -153,18 +114,18 @@ export function CourseList() {
   };
 
   const handleDelete = async (courseId: string) => {
-    if (!confirm('Are you sure you want to delete this course? All enrollments will be orphaned.')) return;
+    if (!confirm('Are you sure you want to delete this course?')) return;
     try {
-      await deleteDoc(doc(db, 'courses', courseId));
+      await cfApi.deleteCourse(courseId);
       fetchData();
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `courses/${courseId}`);
+      console.error("Delete course failed:", error);
     }
   };
 
-  if (viewingCourse && profile) {
+  if (viewingCourse) {
     return (
-      <div className="p-4 md:p-8 max-w-6xl mx-auto">
+      <div className="p-4 md:p-8 max-w-7xl mx-auto">
         <CourseDetail 
           course={viewingCourse} 
           onBack={() => {
@@ -172,22 +133,22 @@ export function CourseList() {
             fetchData();
           }} 
           onUpdate={fetchData}
-          role={profile.role}
+          role={profile?.role || 'student'}
         />
       </div>
     );
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight">Institutional Courses</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight">Institutional Courses</h1>
           <p className="text-gray-500 mt-1 font-medium text-sm">
             {profile?.role === 'student' ? 'Your enrolled courses and academic content.' : 'Manage the institutional curriculum and assignments.'}
           </p>
         </div>
-        {profile?.role === 'admin' && (
+        {isAdmin && (
           <Button onClick={() => { resetForm(); setShowForm(true); }} className="gap-2 bg-black text-white hover:bg-gray-800">
             <Plus className="w-4 h-4" /> Create Course
           </Button>
@@ -207,14 +168,14 @@ export function CourseList() {
             <h3 className="text-lg font-bold text-gray-900">
               {profile?.role === 'student' ? 'No Enrolled Courses' : 'No Courses Found'}
             </h3>
-            <p className="text-gray-500 max-w-xs mx-auto mt-2">
+            <p className="text-gray-500 max-w-xs mx-auto mt-2 italic text-sm">
               {profile?.role === 'student' ? 'You are not currently enrolled in any courses. Please contact the administrator.' : 'Get started by creating the first institutional course.'}
             </p>
           </div>
         ) : (
           courses.map((course) => (
             <motion.div key={course.id} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}>
-              <Card className="h-full flex flex-col group relative overflow-hidden">
+              <Card className="h-full flex flex-col group relative overflow-hidden hover:shadow-xl hover:border-black/5 transition-all">
                 <div className="mb-4">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-transform ${course.status === 'active' ? 'bg-black' : 'bg-gray-100'}`}>
                     <BookOpen className={`w-6 h-6 ${course.status === 'active' ? 'text-white' : 'text-gray-400'}`} />
@@ -228,11 +189,11 @@ export function CourseList() {
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Instructor</span>
                     <div className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
                       <User className="w-3 h-3" />
-                      {profile?.role === 'teacher' ? 'You' : (teachers.find(t => t.uid === course.teacherId)?.fullName || 'Assigned Staff')}
+                      {profile?.role === 'teacher' && course.teacher_id === profile.uid ? 'You' : (teachers.find(t => t.uid === course.teacher_id)?.full_name || 'Assigned Staff')}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {profile?.role === 'admin' && (
+                    {isAdmin && (
                       <>
                         <button onClick={() => handleEdit(course)} className="p-2 text-gray-400 hover:text-black transition-colors"><Edit className="w-4 h-4" /></button>
                         <button onClick={() => handleDelete(course.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
@@ -254,7 +215,6 @@ export function CourseList() {
         )}
       </div>
 
-      {/* Course Form Modal */}
       <AnimatePresence>
         {showForm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -266,44 +226,42 @@ export function CourseList() {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="space-y-1">
+                <div>
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Title</label>
-                  <input required value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none" placeholder="e.g. Advanced Mathematics" />
+                  <input required value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black" />
                 </div>
 
-                <div className="space-y-1">
+                <div>
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Description</label>
-                  <textarea required value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none h-24" placeholder="Course syllabus and overview..." />
+                  <textarea required value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none h-24 focus:ring-2 focus:ring-black" />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Assigned Teacher</label>
-                    <select required value={assignedTeacherId} onChange={(e) => setAssignedTeacherId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none appearance-none">
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Teacher</label>
+                    <select required value={assignedTeacherId} onChange={(e) => setAssignedTeacherId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none appearance-none">
                       <option value="">Select Teacher</option>
-                      {teachers.map(t => <option key={t.uid} value={t.uid}>{t.fullName}</option>)}
+                      {teachers.map(t => <option key={t.uid} value={t.uid}>{t.full_name}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Course Fee ($)</label>
-                    <input type="number" value={fee} onChange={(e) => setFee(Number(e.target.value))} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none" />
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Fee ($)</label>
+                    <input type="number" value={fee} onChange={(e) => setFee(Number(e.target.value))} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none" />
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Visibility Status</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['draft', 'active', 'archived'] as const).map((s) => (
-                      <button key={s} type="button" onClick={() => setStatus(s)} className={`py-2 text-[10px] font-bold rounded-lg border-2 transition-all uppercase tracking-wider ${status === s ? 'border-black bg-black text-white' : 'border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-200'}`}>{s}</button>
+                <div>
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Status</label>
+                  <div className="flex gap-2 mt-2">
+                    {['draft', 'active', 'archived'].map((s) => (
+                      <button key={s} type="button" onClick={() => setStatus(s as any)} className={`flex-1 py-2 text-[10px] font-bold rounded-lg border-2 uppercase tracking-wider ${status === s ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-400 border-gray-100 hover:border-gray-200'}`}>{s}</button>
                     ))}
                   </div>
                 </div>
 
                 <div className="pt-4 flex gap-3">
                   <Button variant="outline" onClick={() => setShowForm(false)} className="flex-1 py-3">Cancel</Button>
-                  <Button type="submit" className="flex-[2] py-3 bg-black text-white">
-                    {isEditing ? 'Save Changes' : 'Create Course'}
-                  </Button>
+                  <Button type="submit" className="flex-[2] py-3 bg-black text-white">{isEditing ? 'Save Changes' : 'Create Course'}</Button>
                 </div>
               </form>
             </motion.div>

@@ -11,12 +11,17 @@ import { UserManagement } from './components/UserManagement';
 import { Reports } from './components/Reports';
 import { ModuleManagement } from './components/ModuleManagement';
 import { LessonManagement } from './components/LessonManagement';
-import { AdminCompletionTracker } from './components/AdminCompletionTracker';
+import { Assessment } from './components/Assessment';
+import { Attendance } from './components/Attendance';
+import { LiveClasses } from './components/LiveClasses';
+import { Discussions } from './components/Discussions';
+import { Messaging } from './components/Messaging';
+import { Certificates } from './components/Certificates';
+import { PlaceholderView } from './components/PlaceholderView';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, AlertCircle, LogOut, BookOpen } from 'lucide-react';
 import { Button } from './components/ui/Card';
-import { logout, db } from './lib/firebase';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { logout } from './lib/firebase';
 import { useRouter, navigate } from './hooks/useRouter';
 import { LandingPage } from './components/LandingPage';
 import { InstitutionSignupPage } from './components/InstitutionSignupPage';
@@ -25,6 +30,7 @@ import { PlatformAdminDashboard } from './components/PlatformAdminDashboard';
 import { InstitutionLoginPage } from './components/InstitutionLoginPage';
 import { StudentSignupPage } from './components/StudentSignupPage';
 import { Institution } from './types';
+import * as cfApi from './services/cfApi';
 
 export default function App() {
   const { route } = useRouter();
@@ -53,25 +59,21 @@ export default function App() {
 
     const fetchInst = async () => {
       try {
-        const q = query(collection(db, 'institutions'), where('slug', '==', slug), limit(1));
-        const snapshot = await getDocs(q);
-        
+        const inst = await cfApi.getInstitutionBySlug(slug);
+
         if (!isMounted) return;
 
-        if (snapshot.empty) {
+        if (!inst || !inst.id) {
           setInstError('not-found');
           setActiveInstitution(null);
           setActiveInstitutionId(null);
+        } else if (inst.status === 'suspended') {
+          setInstError('suspended');
+          setActiveInstitution(null);
+          setActiveInstitutionId(null);
         } else {
-          const inst = snapshot.docs[0].data() as Institution;
-          if (inst.status === 'suspended') {
-            setInstError('suspended');
-            setActiveInstitution(null);
-            setActiveInstitutionId(null);
-          } else {
-            setActiveInstitution(inst);
-            setActiveInstitutionId(inst.id); // Merges institutional context with useAuth
-          }
+          setActiveInstitution(inst);
+          setActiveInstitutionId(inst.id);
         }
       } catch (err) {
         console.error("Error resolving institution slug:", err);
@@ -242,6 +244,28 @@ export default function App() {
               institution={activeInstitution} 
             />
             <main className="flex-1 overflow-y-auto w-full flex flex-col">
+              <header className="hidden lg:flex items-center justify-between px-8 py-4 bg-white/50 backdrop-blur-md sticky top-0 z-30 border-b border-gray-100/50">
+                <div className="relative w-96">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input 
+                    type="text" 
+                    placeholder="Search courses, students, or documents..."
+                    className="w-full pl-10 pr-4 py-2 bg-gray-50/50 border border-gray-100 rounded-xl text-xs focus:outline-none focus:border-black transition-all"
+                  />
+                </div>
+                <div className="flex items-center gap-4">
+                  <NotificationBell />
+                  <div className="flex items-center gap-3 pl-4 border-l border-gray-100">
+                    <div className="text-right hidden xl:block">
+                      <p className="text-xs font-black text-gray-900 leading-tight">{profile.full_name}</p>
+                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{profile.role}</p>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center font-black shadow-lg shadow-black/10">
+                      {profile.full_name?.charAt(0)}
+                    </div>
+                  </div>
+                </div>
+              </header>
               <header className="lg:hidden bg-white border-b border-gray-100 p-4 sticky top-0 z-30 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 bg-gray-50 border border-gray-100 rounded-lg flex items-center justify-center shrink-0">
@@ -253,9 +277,12 @@ export default function App() {
                   </div>
                   <span className="font-bold tracking-tight">{activeInstitution?.name || 'LearnFlow'}</span>
                 </div>
-                <Button variant="ghost" onClick={() => setIsSidebarOpen(true)} className="p-2">
-                  <Menu className="w-6 h-6 text-black" />
-                </Button>
+                <div className="flex items-center gap-3">
+                  <NotificationBell />
+                  <Button variant="ghost" onClick={() => setIsSidebarOpen(true)} className="p-2">
+                    <Menu className="w-6 h-6 text-black" />
+                  </Button>
+                </div>
               </header>
               
               <div className="flex-1">
@@ -269,39 +296,24 @@ export default function App() {
                     className="min-h-full"
                   >
                     {(() => {
-                      switch (activeTab) {
-                        case 'dashboard':
-                          return <Dashboard setActiveTab={setActiveTab} />;
-                        case 'courses':
-                          return <CourseList />;
-                        case 'announcements':
-                          return <Announcements />;
-                        case 'financials':
-                          return isAdmin ? <Financials /> : <Dashboard setActiveTab={setActiveTab} />;
-                        case 'students':
-                          return (isAdmin || isTeacher) ? <StudentManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                        case 'teachers':
-                          return isAdmin ? <TeacherManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                        case 'users':
-                          return isAdmin ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                        case 'modules':
-                          return (isAdmin || isTeacher) ? <ModuleManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                        case 'lessons':
-                          return (isAdmin || isTeacher) ? <LessonManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                        case 'reports':
-                          return <Reports />;
-                        case 'tracker':
-                          return isAdmin ? <AdminCompletionTracker /> : <Dashboard setActiveTab={setActiveTab} />;
-                        default:
-                          return (
-                            <div className="p-8 flex items-center justify-center min-h-[50vh]">
-                              <div className="text-center">
-                                <p className="text-gray-400 font-medium italic mb-4 text-lg">Content for {activeTab} is coming soon...</p>
-                                <button onClick={() => setActiveTab('dashboard')} className="text-black font-bold underline underline-offset-4">Return to Dashboard</button>
-                              </div>
-                            </div>
-                          );
-                      }
+                      if (activeTab.startsWith('dashboard')) return <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'students/all') return (isAdmin || isTeacher) ? <StudentManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'teachers/all') return isAdmin ? <TeacherManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'users/roles' || activeTab === 'users/permissions') return isAdmin ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'courses/all') return <CourseList />;
+                      if (activeTab === 'content/modules') return (isAdmin || isTeacher) ? <ModuleManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'content/lessons') return (isAdmin || isTeacher) ? <LessonManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('assignments/')) return <Assessment />;
+                      if (activeTab.startsWith('attendance/')) return (isAdmin || isTeacher) ? <Attendance /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'finance/payments') return isAdmin ? <Financials /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('reports/')) return <Reports />;
+                      if (activeTab === 'communication/announcements') return <Announcements />;
+                      if (activeTab === 'communication/live-classes') return <LiveClasses />;
+                      if (activeTab === 'communication/discussions') return <Discussions />;
+                      if (activeTab === 'certificates/all') return <Certificates />;
+                      
+                      // Fallback for all other sidebar routes
+                      return <PlaceholderView routeId={activeTab} />;
                     })()}
                   </motion.div>
                 </AnimatePresence>
@@ -329,6 +341,20 @@ export default function App() {
               </Button>
             </div>
           </div>
+        </div>
+      );
+  }
+}
+xs py-3 px-6 rounded-xl shadow-lg shadow-black/5">
+                Go to Homepage
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+  }
+}
+>
         </div>
       );
   }

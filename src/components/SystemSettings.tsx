@@ -1,80 +1,68 @@
 import { useState, useEffect } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { Card, Button } from './ui/Card';
-import { Palette, Globe, Shield, CreditCard, User, Clock, Bell, ImageIcon, Monitor, Lock, Check } from 'lucide-react';
+import { Palette, Globe, Shield, CreditCard, User, Clock, Bell, ImageIcon, Check, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
+import * as cfApi from '../services/cfApi';
 
 export function SystemSettings() {
-  const { profile } = useAuth();
+  const { profile, institutionId } = useAuth();
   const [activeTab, setActiveTab] = useState((profile?.role === 'teacher' || profile?.role === 'student') ? 'profile' : 'branding');
   const [loading, setLoading] = useState(false);
+  const [institution, setInstitution] = useState<any>(null);
 
   // Live Settings State (Admin)
   const [platformName, setPlatformName] = useState('LearnFlow');
   const [logoUrl, setLogoUrl] = useState('');
   const [primaryColor, setPrimaryColor] = useState('black');
   
-  // Payment methods checkboxes
-  const [methods, setMethods] = useState({
-    transfer: true,
-    cash: false,
-    card: true
-  });
-
   // Personal States (Student/Teacher)
-  const [displayName, setDisplayName] = useState(profile?.name || '');
-  const [photoURL, setPhotoURL] = useState(profile?.photoURL || '');
-  const [availability, setAvailability] = useState('Active');
-  const [darkMode, setDarkMode] = useState(false);
+  const [displayName, setDisplayName] = useState(profile?.full_name || '');
+  const [photoURL, setPhotoURL] = useState(profile?.photo_url || '');
 
   useEffect(() => {
-    if (profile?.role === 'admin') {
-      fetchPlatformSettings();
+    if (institutionId) {
+      fetchData();
     }
-  }, [profile]);
+  }, [institutionId]);
 
-  const fetchPlatformSettings = async () => {
+  const fetchData = async () => {
+    if (!institutionId) return;
     setLoading(true);
     try {
-      const docRef = doc(db, 'settings', 'platform');
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        setPlatformName(data.platformName || 'LearnFlow');
-        setLogoUrl(data.logoUrl || '');
-        setPrimaryColor(data.primaryColor || 'black');
-        if (data.paymentMethods) {
-          setMethods(data.paymentMethods);
-        }
-      }
+      const inst = await cfApi.getInstitution(institutionId);
+      setInstitution(inst);
+      setPlatformName(inst.name || 'LearnFlow');
+      setLogoUrl(inst.logo_url || '');
+      setPrimaryColor(inst.primary_color || 'black');
     } catch (err) {
-      console.warn("Could not load platform settings from Firestore, using standard defaults:", err);
+      console.error("Fetch institution failed:", err);
     } finally {
       setLoading(false);
     }
   };
 
   const handleSaveSettings = async () => {
+    if (!institutionId) return;
     setLoading(true);
     try {
-      if (profile?.role === 'admin') {
-        const docRef = doc(db, 'settings', 'platform');
-        await setDoc(docRef, {
-          platformName,
-          logoUrl,
-          primaryColor,
-          paymentMethods: methods,
-          updatedAt: new Date()
+      if (profile?.role === 'admin' || profile?.role === 'owner') {
+        await cfApi.updateInstitution(institutionId, {
+          name: platformName,
+          logo_url: logoUrl,
+          primary_color: primaryColor
         });
-        alert("Platform configurations successfully persisted to Firestore settings document!");
+        alert("Institutional settings saved successfully!");
       } else {
+        await cfApi.updateCurrentUser({
+          fullName: displayName,
+          photoUrl: photoURL
+        });
         alert("Profile details saved successfully!");
       }
+      fetchData();
     } catch (err) {
       console.error("Failed to save settings:", err);
-      alert("Failed to save settings to live Firestore database.");
     } finally {
       setLoading(false);
     }
@@ -82,29 +70,26 @@ export function SystemSettings() {
 
   const adminTabs = [
     { id: 'branding', label: 'Branding & Theme', icon: Palette },
-    { id: 'localization', label: 'Localization', icon: Globe },
-    { id: 'security', label: 'Security & Roles', icon: Shield },
-    { id: 'payment', label: 'Payment Gateway', icon: CreditCard },
+    { id: 'security', label: 'Security & Privacy', icon: Shield },
+    { id: 'payment', label: 'Payment Settings', icon: CreditCard },
   ];
 
-  const teacherTabs = [
+  const personalTabs = [
     { id: 'profile', label: 'My Profile', icon: User },
-    { id: 'availability', label: 'Availability Status', icon: Clock },
     { id: 'notifications', label: 'Notification Prefs', icon: Bell },
-    { id: 'theme', label: 'Theme (Dark Mode)', icon: Palette },
   ];
 
-  const tabs = (profile?.role === 'teacher' || profile?.role === 'student') ? teacherTabs : adminTabs;
+  const tabs = (profile?.role === 'admin' || profile?.role === 'owner') ? [...personalTabs, ...adminTabs] : personalTabs;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Settings</h1>
-          <p className="text-gray-500 mt-1 font-medium">Configure platform preferences, styling customization, and availability status.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Settings Hub</h1>
+          <p className="text-gray-500 mt-1 font-medium text-sm">Configure your personal profile and institutional preferences.</p>
         </div>
-        <Button onClick={handleSaveSettings} disabled={loading} className="bg-black text-white hover:bg-gray-800">
-          {loading ? 'Saving...' : 'Save Settings'}
+        <Button onClick={handleSaveSettings} disabled={loading} className="bg-black text-white px-8">
+          {loading ? 'Processing...' : 'Commit Changes'}
         </Button>
       </div>
 
@@ -114,10 +99,10 @@ export function SystemSettings() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                 activeTab === tab.id 
-                  ? 'bg-black text-white shadow-md shadow-black/10' 
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-black'
+                  ? 'bg-black text-white shadow-xl shadow-black/10' 
+                  : 'text-gray-400 hover:bg-gray-100 hover:text-black'
               }`}
             >
               <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? 'text-white' : 'text-gray-400'}`} />
@@ -127,47 +112,31 @@ export function SystemSettings() {
         </div>
 
         <div className="flex-1">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2 }}
-          >
+          <motion.div key={activeTab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}>
             {activeTab === 'profile' && (
-              <Card title="Edit Profile Details">
+              <Card title="Personal Profile Identification">
                 <div className="space-y-6 mt-6">
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Display Name</label>
+                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Public Display Name</label>
                     <input 
                       type="text" 
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
-                      className="w-full max-w-md px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 text-sm" 
+                      className="w-full max-w-md px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none font-bold text-gray-900" 
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Email Address</label>
-                    <input 
-                      type="email" 
-                      defaultValue={profile?.email || ''} 
-                      className="w-full max-w-md px-4 py-2 border border-gray-200 rounded-xl bg-gray-50 cursor-not-allowed focus:outline-none text-sm" 
-                      disabled 
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Profile Picture Link</label>
+                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Avatar Source URL</label>
                     <div className="flex items-center gap-6">
-                      <img 
-                        src={photoURL || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'} 
-                        className="w-16 h-16 rounded-full border border-gray-200"
-                        alt="Profile avatar"
-                      />
+                      <div className="w-16 h-16 rounded-2xl bg-gray-900 text-white flex items-center justify-center font-black text-xl overflow-hidden shadow-lg shadow-black/10">
+                         {photoURL ? <img src={photoURL} className="w-full h-full object-cover" /> : profile?.full_name?.charAt(0)}
+                      </div>
                       <input 
                         type="text"
                         placeholder="https://..."
                         value={photoURL}
                         onChange={(e) => setPhotoURL(e.target.value)}
-                        className="w-full max-w-xs px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 text-sm"
+                        className="w-full max-w-xs px-4 py-2 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black text-sm"
                       />
                     </div>
                   </div>
@@ -175,111 +144,42 @@ export function SystemSettings() {
               </Card>
             )}
 
-            {activeTab === 'availability' && (
-              <Card title="Availability Status" description="Indicate your availability status to students and administrative staff.">
-                <div className="space-y-4 mt-6">
-                  {['Active', 'Busy', 'Offline'].map((status) => (
-                    <div 
-                      key={status}
-                      onClick={() => setAvailability(status)}
-                      className={`p-4 border rounded-2xl flex items-center justify-between cursor-pointer transition-all ${
-                        availability === status ? 'border-black bg-gray-50' : 'border-gray-100 hover:border-gray-200'
-                      }`}
-                    >
-                      <div>
-                        <p className="font-bold text-sm text-gray-900">{status}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {status === 'Active' ? 'Open for student Q&As and grading.' : status === 'Busy' ? 'Currently teaching or preparing syllabus.' : 'Do not disturb.'}
-                        </p>
-                      </div>
-                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${availability === status ? 'border-black' : 'border-gray-300'}`}>
-                        {availability === status && <div className="w-2 h-2 rounded-full bg-black"></div>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {activeTab === 'notifications' && (
-              <Card title="Notification Preferences" description="Choose how you receive assignment submissions, exam alerts, and student enrollment alerts.">
-                <div className="space-y-4 mt-6">
-                  {[
-                    { label: 'Email Notifications', desc: 'Syllabus changes, weekly logs, financial alerts' },
-                    { label: 'SMS Notifications', desc: 'Urgent meeting schedules and student alerts' },
-                    { label: 'Push Notifications', desc: 'New messages, forum replies, and student enrollments' }
-                  ].map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-4 border border-gray-100 rounded-2xl">
-                      <div>
-                        <h4 className="font-bold text-sm text-gray-900">{item.label}</h4>
-                        <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
-                      </div>
-                      <div className="w-12 h-6 bg-green-500 rounded-full relative cursor-pointer">
-                        <div className="w-4 h-4 bg-white rounded-full absolute right-1 top-1"></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {activeTab === 'theme' && (
-              <Card title="Theme & Appearance" description="Customize interface theme elements for maximum eye comfort.">
-                <div className="space-y-4 mt-6">
-                  <div className="flex items-center justify-between p-4 border border-gray-100 rounded-2xl">
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-900">Theme mode</h4>
-                      <p className="text-xs text-gray-400 mt-0.5">Enable Dark Mode interface settings</p>
-                    </div>
-                    <div 
-                      onClick={() => setDarkMode(!darkMode)}
-                      className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${darkMode ? 'bg-black' : 'bg-gray-200'}`}
-                    >
-                      <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${darkMode ? 'right-1' : 'left-1'}`}></div>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            )}
-
-            {/* Admin specific tabs */}
             {activeTab === 'branding' && (
-              <Card title="Website Branding">
+              <Card title="Institutional Branding" description="Customize how your institution appears to students and staff.">
                 <div className="space-y-6 mt-6">
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Platform Name</label>
+                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Institution Name</label>
                     <input 
                       type="text" 
                       value={platformName}
                       onChange={(e) => setPlatformName(e.target.value)}
-                      className="w-full max-w-md px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 text-sm font-semibold" 
+                      className="w-full max-w-md px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none font-bold text-gray-900" 
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Primary Logo Link</label>
+                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Institutional Logo URL</label>
                     <div className="flex items-center gap-6">
-                      <div className="w-16 h-16 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-center">
-                        {logoUrl ? <img src={logoUrl} className="w-full h-full object-contain rounded-xl" alt="Logo preview" /> : <ImageIcon className="w-6 h-6 text-gray-400" />}
+                      <div className="w-16 h-16 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-center">
+                        {logoUrl ? <img src={logoUrl} className="w-full h-full object-contain p-2" alt="Logo" /> : <ImageIcon className="w-6 h-6 text-gray-300" />}
                       </div>
                       <input 
                         type="text"
                         placeholder="https://..."
                         value={logoUrl}
                         onChange={(e) => setLogoUrl(e.target.value)}
-                        className="w-full max-w-xs px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-black/5 text-sm"
+                        className="w-full max-w-xs px-4 py-2 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black text-sm"
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-2">Theme Primary Color</label>
+                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Primary Aesthetic Color</label>
                     <div className="flex gap-4">
-                      {['black', 'blue-600', 'emerald-600', 'purple-600'].map(color => (
+                      {['black', '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b'].map(color => (
                         <div 
                           key={color}
                           onClick={() => setPrimaryColor(color)}
-                          className={`w-10 h-10 rounded-full border cursor-pointer flex items-center justify-center transition-all ${
-                            color === 'black' ? 'bg-black' : color === 'blue-600' ? 'bg-blue-600' : color === 'emerald-600' ? 'bg-emerald-600' : 'bg-purple-600'
-                          } ${primaryColor === color ? 'ring-2 ring-offset-2 ring-blackScale' : ''}`}
+                          className={`w-10 h-10 rounded-full border-2 cursor-pointer flex items-center justify-center transition-all ${primaryColor === color ? 'border-black scale-110' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                          style={{ backgroundColor: color === 'black' ? '#000' : color }}
                         >
                           {primaryColor === color && <Check className="w-4 h-4 text-white" />}
                         </div>
@@ -290,92 +190,34 @@ export function SystemSettings() {
               </Card>
             )}
 
-            {activeTab === 'payment' && (
-              <Card title="Payment Gateways" description="Enable or disable payment collection avenues for students.">
-                <div className="space-y-4 mt-6">
-                  <div className="flex items-center justify-between p-4 border border-gray-100 rounded-2xl">
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-900">Bank Transfer</h4>
-                      <p className="text-xs text-gray-500 mt-0.5">Students can upload wire transaction reference receipts.</p>
-                    </div>
-                    <div 
-                      onClick={() => setMethods(prev => ({ ...prev, transfer: !prev.transfer }))}
-                      className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${methods.transfer ? 'bg-green-500' : 'bg-gray-200'}`}
-                    >
-                      <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${methods.transfer ? 'right-1' : 'left-1'}`}></div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border border-gray-100 rounded-2xl">
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-900">Cash Payment</h4>
-                      <p className="text-xs text-gray-500 mt-0.5">Over-the-counter payments registered by administrators.</p>
-                    </div>
-                    <div 
-                      onClick={() => setMethods(prev => ({ ...prev, cash: !prev.cash }))}
-                      className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${methods.cash ? 'bg-green-500' : 'bg-gray-200'}`}
-                    >
-                      <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${methods.cash ? 'right-1' : 'left-1'}`}></div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4 border border-gray-100 rounded-2xl">
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-900">Credit / Debit Card</h4>
-                      <p className="text-xs text-gray-500 mt-0.5">Instant online payment clearance using Stripe / Gateway integration.</p>
-                    </div>
-                    <div 
-                      onClick={() => setMethods(prev => ({ ...prev, card: !prev.card }))}
-                      className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${methods.card ? 'bg-green-500' : 'bg-gray-200'}`}
-                    >
-                      <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all ${methods.card ? 'right-1' : 'left-1'}`}></div>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            )}
-
             {activeTab === 'security' && (
-              <Card title="Security Features">
-                <div className="space-y-4 mt-6">
-                  <div className="flex items-center justify-between p-4 border border-gray-100 rounded-xl">
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-900">Two-Factor Authentication</h4>
-                      <p className="text-xs text-gray-500 mt-0.5">Require 2FA for all admin and teacher accounts.</p>
+              <Card title="Security & API Access">
+                 <div className="space-y-4 mt-6">
+                    <div className="p-4 border border-gray-100 rounded-2xl flex items-center justify-between">
+                       <div>
+                         <p className="font-bold text-sm text-gray-900">Enforce Institution-only Login</p>
+                         <p className="text-xs text-gray-400 mt-0.5">Restrict access to verified institutional emails only.</p>
+                       </div>
+                       <div className="w-10 h-5 bg-green-500 rounded-full relative"><div className="w-3 h-3 bg-white rounded-full absolute right-1 top-1"></div></div>
                     </div>
-                    <div className="w-12 h-6 bg-green-500 rounded-full relative cursor-pointer">
-                      <div className="w-4 h-4 bg-white rounded-full absolute right-1 top-1"></div>
+                    <div className="p-4 border border-gray-100 rounded-2xl flex items-center justify-between opacity-50 cursor-not-allowed bg-gray-50">
+                       <div>
+                         <p className="font-bold text-sm text-gray-900">Advanced API Webhooks</p>
+                         <p className="text-xs text-gray-400 mt-0.5">Trigger external actions on course enrollment or completion.</p>
+                       </div>
+                       <Lock className="w-4 h-4 text-gray-400" />
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between p-4 border border-gray-100 rounded-xl">
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-900">Login History Tracking</h4>
-                      <p className="text-xs text-gray-500 mt-0.5">Keep logs of all user logins, sessions, and client IPs.</p>
-                    </div>
-                    <div className="w-12 h-6 bg-green-500 rounded-full relative cursor-pointer">
-                      <div className="w-4 h-4 bg-white rounded-full absolute right-1 top-1"></div>
-                    </div>
-                  </div>
-                </div>
+                 </div>
               </Card>
             )}
 
-            {activeTab === 'localization' && (
-              <Card title="Localization & Formats">
-                <div className="space-y-4 mt-6">
-                  <div className="flex items-center justify-between p-4 border border-gray-100 rounded-xl">
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-900">Primary Language</h4>
-                      <p className="text-xs text-gray-500 mt-0.5">English (United States)</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between p-4 border border-gray-100 rounded-xl">
-                    <div>
-                      <h4 className="font-bold text-sm text-gray-900">Default Currency</h4>
-                      <p className="text-xs text-gray-500 mt-0.5">USD ($) - US Dollar</p>
-                    </div>
-                  </div>
-                </div>
+            {activeTab === 'payment' && (
+              <Card title="Payment Engine Config">
+                 <div className="p-8 text-center bg-gray-50 border border-dashed border-gray-200 rounded-3xl">
+                    <CreditCard className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                    <h4 className="font-bold text-gray-900">Automated Clearing House</h4>
+                    <p className="text-xs text-gray-500 max-w-xs mx-auto mt-2">The financial clearing engine is managed at the platform level. Contact support to change your payout currency or gateway provider.</p>
+                 </div>
               </Card>
             )}
           </motion.div>

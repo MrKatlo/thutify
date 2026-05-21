@@ -144,7 +144,65 @@ export interface PlatformUser {
   email: string;
   phone: string;
   isPlatformAdmin?: boolean;
+  photoUrl?: string;
   createdAt: any;
   updatedAt: any;
+}
+
+export interface Discussion {
+  id: string;
+  institutionId: string;
+  courseId: string;
+  title: string;
+  authorId: string;
+  authorName: string;
+  createdAt: any;
+  postCount?: number;
+}
+
+export interface DiscussionPost {
+  id: string;
+  discussionId: string;
+  authorId: string;
+  authorName: string;
+  content: string;
+  createdAt: any;
+}
+
+export interface Message {
+  id: string;
+  institutionId: string;
+  fromUserId: string;
+  fromUserName: string;
+  toUserId: string;
+  toUserName: string;
+  content: string;
+  readAt: any;
+  createdAt: any;
+}
+
+export interface Notification {
+  id: string;
+  institutionId: string;
+  userId: string;
+  title: string;
+  body: string;
+  type: 'assignment' | 'grade' | 'announcement' | 'message';
+  link?: string;
+  readAt: any;
+  createdAt: any;
+}
+
+export interface Material {
+  id: string;
+  institutionId: string;
+  name: string;
+  type: 'PDF' | 'Video' | 'Document';
+  size: string;
+  category: string;
+  downloadUrl: string;
+  uploadedBy: string;
+  downloads: number;
+  createdAt: any;
 }
 

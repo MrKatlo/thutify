@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
-import { PlatformUser, InstitutionUser } from '../types';
+import { auth } from '../lib/firebase';
+import * as cfApi from '../services/cfApi';
 
 export interface MergedProfile {
   uid: string;
@@ -38,7 +37,6 @@ export function useAuth(activeInstitutionId?: string | null) {
       return;
     }
 
-    // Set initial
     setCurrentInstId(globalActiveInstitutionId);
 
     const handleGlobalUpdate = () => {
@@ -51,93 +49,43 @@ export function useAuth(activeInstitutionId?: string | null) {
   }, [activeInstitutionId]);
 
   useEffect(() => {
-    let unsubscribeGlobal: (() => void) | null = null;
-    let unsubscribeMembership: (() => void) | null = null;
+    let isMounted = true;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!isMounted) return;
+
       setUser(firebaseUser);
 
-      // Clean up previous listeners
-      if (unsubscribeGlobal) {
-        unsubscribeGlobal();
-        unsubscribeGlobal = null;
-      }
-      if (unsubscribeMembership) {
-        unsubscribeMembership();
-        unsubscribeMembership = null;
-      }
-
       if (firebaseUser) {
-        let globalData: PlatformUser | null = null;
-        let membershipData: InstitutionUser | null = null;
+        try {
+          const platformUser = await cfApi.getCurrentUser();
+          let membershipData = null;
 
-        const updateMergedProfile = () => {
-          if (globalData) {
+          if (currentInstId) {
+            membershipData = await cfApi.getInstitutionMembership(currentInstId);
+          }
+
+          if (isMounted) {
             setProfile({
               uid: firebaseUser.uid,
-              fullName: globalData.fullName || '',
-              email: globalData.email || firebaseUser.email || '',
-              phone: globalData.phone || '',
-              isPlatformAdmin: !!globalData.isPlatformAdmin,
+              fullName: platformUser?.full_name || firebaseUser.displayName || '',
+              email: platformUser?.email || firebaseUser.email || '',
+              phone: platformUser?.phone || '',
+              isPlatformAdmin: !!platformUser?.is_platform_admin,
               role: membershipData?.role,
-              status: membershipData?.status
+              status: membershipData?.status,
             });
-          } else {
+          }
+        } catch (err) {
+          console.error('Error loading auth profile:', err);
+          if (isMounted) {
             setProfile(null);
           }
-          setLoading(false);
-        };
-
-        // 1. Subscribe to Global User record
-        unsubscribeGlobal = onSnapshot(
-          doc(db, 'users', firebaseUser.uid),
-          (docSnap) => {
-            if (docSnap.exists()) {
-              globalData = docSnap.data() as PlatformUser;
-            } else {
-              // Fallback: If user doc doesn't exist yet, populate with auth defaults
-              globalData = {
-                uid: firebaseUser.uid,
-                fullName: firebaseUser.displayName || '',
-                email: firebaseUser.email || '',
-                phone: firebaseUser.phoneNumber || '',
-                isPlatformAdmin: false,
-                createdAt: new Date(),
-                updatedAt: new Date()
-              };
-            }
-            updateMergedProfile();
-          },
-          (error) => {
-            console.error("Global profile sync error:", error);
+        } finally {
+          if (isMounted) {
             setLoading(false);
           }
-        );
-
-        // 2. Subscribe to Institution Membership record if currentInstId is provided
-        if (currentInstId) {
-          const membershipDocId = `${firebaseUser.uid}_${currentInstId}`;
-          unsubscribeMembership = onSnapshot(
-            doc(db, 'institutionUsers', membershipDocId),
-            (docSnap) => {
-              if (docSnap.exists()) {
-                membershipData = docSnap.data() as InstitutionUser;
-              } else {
-                membershipData = null;
-              }
-              updateMergedProfile();
-            },
-            (error) => {
-              console.error("Institution membership sync error:", error);
-              updateMergedProfile();
-            }
-          );
-        } else {
-          membershipData = null;
-          // Trigger update instantly since no membership exists/is needed
-          setTimeout(updateMergedProfile, 0);
         }
-
       } else {
         setProfile(null);
         setLoading(false);
@@ -145,9 +93,8 @@ export function useAuth(activeInstitutionId?: string | null) {
     });
 
     return () => {
+      isMounted = false;
       unsubscribeAuth();
-      if (unsubscribeGlobal) unsubscribeGlobal();
-      if (unsubscribeMembership) unsubscribeMembership();
     };
   }, [currentInstId]);
 
@@ -164,6 +111,6 @@ export function useAuth(activeInstitutionId?: string | null) {
     isTeacher: profile?.role === 'teacher',
     isStudent: profile?.role === 'student',
     isPlatformAdmin: !!profile?.isPlatformAdmin,
-    institutionId: currentInstId
+    institutionId: currentInstId,
   };
 }

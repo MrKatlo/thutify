@@ -11,3 +11,6 @@ coverage/
 .wrangler
 .dev.vars*
 !.dev.vars.example
+
+# large files
+firebase.zip
