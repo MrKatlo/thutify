@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { db } from '../lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { BookOpen, Search, ArrowRight, Sparkles, Loader2, Compass, MapPin, Building, AlertCircle } from 'lucide-react';
-import { Button, Card } from './ui/Card';
+import * as cfApi from '../services/cfApi';
+import { BookOpen, Search, ArrowRight, Loader2, Compass, MapPin, Building, AlertCircle } from 'lucide-react';
+import { Card } from './ui/Card';
 import { navigate } from '../hooks/useRouter';
 import { motion, AnimatePresence } from 'motion/react';
 import { Institution } from '../types';
@@ -21,14 +20,8 @@ export function InstitutionSearchPage() {
     setLoading(true);
     setError('');
     try {
-      // Query active institutions
-      const q = query(collection(db, 'institutions'), where('status', '==', 'active'));
-      const snapshot = await getDocs(q);
-      
-      const list: Institution[] = [];
-      snapshot.forEach(docSnap => {
-        list.push(docSnap.data() as Institution);
-      });
+      // Use the public search API (assuming it handles status=active filtering)
+      const list = await cfApi.searchInstitutions('');
       setInstitutions(list);
     } catch (err: any) {
       console.error("Error fetching institutions:", err);

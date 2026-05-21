@@ -1,7 +1,7 @@
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
-import { collection, query, where, getDocs, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { auth } from '../lib/firebase';
+import * as cfApi from '../services/cfApi';
 import { BookOpen, User, Mail, Lock, Phone, Globe, Shield, Sparkles, Loader2, Check, AlertCircle } from 'lucide-react';
 import { Button, Card } from './ui/Card';
 import { navigate } from '../hooks/useRouter';
@@ -76,17 +76,14 @@ export function InstitutionSignupPage() {
       setCheckingSlug(true);
       const timer = setTimeout(async () => {
         try {
-          const q = query(collection(db, 'institutions'), where('slug', '==', instSlug.trim()));
-          const snapshot = await getDocs(q);
-          
-          if (!snapshot.empty) {
+          const inst = await cfApi.getInstitutionBySlug(instSlug.trim());
+          if (inst && inst.id) {
             setSlugStatus('invalid');
           } else {
             setSlugStatus('valid');
           }
         } catch (err) {
-          console.error("Error checking slug uniqueness:", err);
-          // Fallback to valid to prevent blocking the user if background database check fails
+          // If 404, then it's valid
           setSlugStatus('valid');
         } finally {
           setCheckingSlug(false);
@@ -157,74 +154,30 @@ export function InstitutionSignupPage() {
 
     setLoading(true);
     try {
-      // Step 1: Re-verify slug uniqueness right before creating
-      const q = query(collection(db, 'institutions'), where('slug', '==', instSlug));
-      const slugSnap = await getDocs(q);
-      if (!slugSnap.empty) {
-        setSlugStatus('invalid');
-        showToast("Slug is already taken. Please enter a different one.", "error");
-        setLoading(false);
-        return;
-      }
-
-      // Step 2: Create Firebase Auth credentials
+      // Step 1: Create Firebase Auth credentials
       const userCredential = await createUserWithEmailAndPassword(auth, ownerEmail, password);
-      const ownerUid = userCredential.user.uid;
-
-      // Force token refresh to ensure auth state is propagated to Firestore before batch write
-      await userCredential.user.getIdToken(true);
-
-      // Step 3: Initialize documents in Firestore using batch write
-      const batch = writeBatch(db);
       
-      // A. Create Institution
-      const instRef = doc(collection(db, 'institutions'));
-      const instId = instRef.id;
-      
-      batch.set(instRef, {
-        id: instId,
+      // Step 2: Create Institution in D1 via Worker
+      // Worker automatically creates platform_user and owner membership
+      await cfApi.createInstitution({
         name: instName,
         slug: instSlug,
-        logoUrl: logoUrl || null,
+        logoUrl: logoUrl || undefined,
         primaryColor: 'black',
         country,
-        institutionType: instType,
-        ownerUserId: ownerUid,
-        status: 'active',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        institutionType: instType
       });
 
-      // B. Create Platform User Profile
-      const userRef = doc(db, 'users', ownerUid);
-      batch.set(userRef, {
-        uid: ownerUid,
+      // Update platform user profile with name and phone
+      await cfApi.updateCurrentUser({
         fullName: ownerName,
-        email: ownerEmail,
-        phone,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        phone: phone
       });
 
-      // C. Create Institution membership record
-      const membershipRef = doc(db, 'institutionUsers', `${ownerUid}_${instId}`);
-      batch.set(membershipRef, {
-        id: `${ownerUid}_${instId}`,
-        institutionId: instId,
-        userId: ownerUid,
-        role: 'owner',
-        status: 'active',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-
-      // Commit Batch
-      await batch.commit();
-
-      showToast("Institution registered successfully! Redirecting to admin dashboard...", "success");
+      showToast("Institution registered successfully! Redirecting to login...", "success");
       
       setTimeout(() => {
-        navigate(`/${instSlug}/admin`);
+        navigate(`/${instSlug}/login`);
       }, 1500);
 
     } catch (err: any) {

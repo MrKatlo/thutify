@@ -1,101 +1,86 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { collection, query, getDocs, addDoc, serverTimestamp, orderBy, where, QueryDocumentSnapshot } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
 import { Card, Button } from './ui/Card';
-import { Bell, Megaphone, Clock, Send, MessageSquare, Users, Globe, ShieldAlert } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Megaphone, Clock, Send, MessageSquare, Loader2 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
+import * as cfApi from '../services/cfApi';
 
 export function Announcements() {
   const { profile, institutionId } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'announcements' | 'conversations'>('announcements');
   const [loading, setLoading] = useState(true);
 
-  // Firestore Lists
+  // Lists
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
 
   // State inputs
   const [annContent, setAnnContent] = useState('');
-  const [annCourse, setAnnCourse] = useState('general');
+  const [annCourseId, setAnnCourseId] = useState('general');
   const [submittingAnn, setSubmittingAnn] = useState(false);
 
   // Conversation inputs
-  const [selectedCourseTopic, setSelectedCourseTopic] = useState('General Discussion');
+  const [selectedCourseId, setSelectedCourseId] = useState('general');
   const [chatMessage, setChatMessage] = useState('');
   const [submittingChat, setSubmittingChat] = useState(false);
 
   useEffect(() => {
     fetchData();
-  }, [selectedCourseTopic, activeSubTab]);
+  }, [profile, institutionId]);
 
-  const getMockAnnouncements = () => [
-    { id: 'a1', content: 'Welcome to the summer term! Please ensure your course registrations are finalized by the end of this week.', authorId: 't1', authorName: 'Dr. Sarah Smith', courseId: 'general', createdAt: new Date() },
-    { id: 'a2', content: 'Reminder: The Midterm Evaluation for Advanced Mathematics will be held tomorrow at 2:00 PM in Lecture Hall A.', authorId: 't2', authorName: 'Prof. James Wilson', courseId: 'general', createdAt: new Date() }
-  ];
-
-  const getMockMessages = () => [
-    { id: 'm1', senderId: 't1', senderName: 'Dr. Sarah Smith', courseId: 'General Discussion', message: 'Hello class! Use this thread to ask syllabus queries or collaborate.', createdAt: new Date() },
-    { id: 'm2', senderId: 'stud1', senderName: 'Alex Johnson', courseId: 'General Discussion', message: 'Perfect! Looking forward to collaborating on calculus problems.', createdAt: new Date() }
-  ];
-
-  const getMockCourses = () => [
-    { id: 'c1', title: 'Advanced Mathematics' },
-    { id: 'c2', title: 'Physics 101' },
-    { id: 'c3', title: 'Introduction to Programming' }
-  ];
+  useEffect(() => {
+    if (activeSubTab === 'conversations') {
+      fetchChatMessages();
+    }
+  }, [selectedCourseId, activeSubTab]);
 
   const fetchData = async () => {
     if (!institutionId) return;
     setLoading(true);
     try {
-      const [snapAnn, snapMsg, snapCourses, snapStudents] = await Promise.all([
-        getDocs(query(collection(db, 'announcements'), where('institutionId', '==', institutionId), orderBy('createdAt', 'desc'))),
-        getDocs(query(collection(db, 'messages'), where('institutionId', '==', institutionId), orderBy('createdAt', 'asc'))),
-        getDocs(query(collection(db, 'courses'), where('institutionId', '==', institutionId))),
-        getDocs(query(collection(db, 'institutionUsers'), where('institutionId', '==', institutionId), where('role', '==', 'student')))
+      const [fetchedAnn, fetchedCourses] = await Promise.all([
+        cfApi.listAnnouncements(institutionId),
+        cfApi.listCourses(institutionId)
       ]);
 
-      const fetchedAnn = snapAnn.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      const fetchedMsg = snapMsg.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      const fetchedCourses = snapCourses.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      const fetchedStudents = snapStudents.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-
-      setAnnouncements(fetchedAnn.length > 0 ? fetchedAnn : getMockAnnouncements());
-      setMessages(fetchedMsg.length > 0 ? fetchedMsg.filter(m => m.courseId === selectedCourseTopic) : getMockMessages().filter(m => m.courseId === selectedCourseTopic));
-      setCourses(fetchedCourses.length > 0 ? fetchedCourses : getMockCourses());
-      setStudents(fetchedStudents.length > 0 ? fetchedStudents : []);
+      setAnnouncements(fetchedAnn);
+      setCourses(fetchedCourses);
     } catch (error) {
-      console.warn("Firestore announcements load failed. Falling back to mockup states:", error);
-      setAnnouncements(getMockAnnouncements());
-      setMessages(getMockMessages().filter(m => m.courseId === selectedCourseTopic));
-      setCourses(getMockCourses());
+      console.error("Fetch announcements error:", error);
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchChatMessages = async () => {
+    if (!institutionId) return;
+    try {
+      const list = await cfApi.listDiscussions(institutionId, selectedCourseId === 'general' ? undefined : selectedCourseId);
+      // For simplicity in this migrated component, we use Discussions as the "chat" backend
+      // In a real app, this would be more specialized
+      setMessages(list);
+    } catch (err) {
+      console.error("Fetch chat error:", err);
+    }
+  };
+
   const handlePostAnnouncement = async (e: FormEvent) => {
     e.preventDefault();
-    if (!annContent.trim() || !profile) return;
+    if (!annContent.trim() || !profile || !institutionId) return;
     setSubmittingAnn(true);
     try {
-      await addDoc(collection(db, 'announcements'), {
+      await cfApi.createAnnouncement(institutionId, {
         content: annContent,
-        authorId: profile.uid,
-        authorName: profile.fullName,
-        courseId: annCourse,
-        institutionId,
-        createdAt: serverTimestamp()
+        course_id: annCourseId === 'general' ? undefined : annCourseId,
+        priority: 'normal'
       });
       setAnnContent('');
       fetchData();
-      alert("Announcement published successfully to enrolled students!");
+      alert("Announcement published!");
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'announcements');
+      console.error("Post announcement error:", error);
     } finally {
       setSubmittingAnn(false);
     }
@@ -103,20 +88,12 @@ export function Announcements() {
 
   const handleSendMessage = async (e: FormEvent) => {
     e.preventDefault();
-    if (!chatMessage.trim() || !profile) return;
+    if (!chatMessage.trim() || !profile || !institutionId) return;
     setSubmittingChat(true);
     try {
-      await addDoc(collection(db, 'messages'), {
-        senderId: profile.uid,
-        senderName: profile.name || profile.fullName,
-        courseId: selectedCourseTopic,
-        message: chatMessage,
-        institutionId,
-        createdAt: serverTimestamp(),
-        read: false
-      });
+      await cfApi.createDiscussion(institutionId, selectedCourseId, chatMessage);
       setChatMessage('');
-      fetchData();
+      fetchChatMessages();
     } catch (error) {
       console.error("Failed to send message:", error);
     } finally {
@@ -124,27 +101,15 @@ export function Announcements() {
     }
   };
 
-  // Filter announcements for students
-  const filteredAnnouncements = announcements.filter(a => {
-    if (a.courseId === 'general') return true;
-    // If student, show if enrolled in that course
-    if (profile?.role === 'student') {
-      return profile.enrolledCourses?.includes(a.courseId) || true; // Fallback display
-    }
-    return true;
-  });
-
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center">
-            <Megaphone className="text-white w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">Collaboration Hub</h1>
-            <p className="text-gray-500 font-medium mt-1 text-sm">Post class bulletins, start discussions, and message classmates.</p>
-          </div>
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center">
+          <Megaphone className="text-white w-6 h-6" />
+        </div>
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight">Collaboration Hub</h1>
+          <p className="text-gray-500 font-medium mt-1 text-sm">Post class bulletins, start discussions, and message classmates.</p>
         </div>
       </div>
 
@@ -175,12 +140,12 @@ export function Announcements() {
                 <div>
                   <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">Assigned Target Audience</label>
                   <select 
-                    value={annCourse}
-                    onChange={(e) => setAnnCourse(e.target.value)}
+                    value={annCourseId}
+                    onChange={(e) => setAnnCourseId(e.target.value)}
                     className="w-full max-w-xs px-3 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm"
                   >
                     <option value="general">Broadcast to Everyone (All Classes)</option>
-                    {courses.map(c => <option key={c.id} value={c.title}>{c.title}</option>)}
+                    {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
                   </select>
                 </div>
                 <div>
@@ -204,10 +169,10 @@ export function Announcements() {
           <div className="space-y-6">
             {loading ? (
               [1, 2].map(i => <div key={i} className="h-28 bg-gray-50 rounded-2xl animate-pulse" />)
-            ) : filteredAnnouncements.length === 0 ? (
+            ) : announcements.length === 0 ? (
               <div className="text-center py-12 text-gray-400 italic">No bulletin announcements logged yet.</div>
             ) : (
-              filteredAnnouncements.map((ann, i) => (
+              announcements.map((ann, i) => (
                 <motion.div
                   key={ann.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -217,7 +182,7 @@ export function Announcements() {
                 >
                   <div className="flex flex-col items-center">
                     <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center font-bold text-sm">
-                      {ann.authorName?.[0] || 'A'}
+                      {ann.author_name?.[0] || 'A'}
                     </div>
                     <div className="w-0.5 flex-1 bg-gray-100 my-2 group-last:hidden" />
                   </div>
@@ -225,15 +190,17 @@ export function Announcements() {
                     <div className="bg-white border border-gray-100 rounded-3xl p-6 hover:shadow-md transition-all">
                       <div className="flex items-center justify-between mb-2">
                         <div>
-                          <p className="font-bold text-gray-900 text-sm">{ann.authorName || 'Instructor'}</p>
+                          <p className="font-bold text-gray-900 text-sm">{ann.author_name || 'Instructor'}</p>
                           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-0.5 flex items-center gap-1">
                             <Clock className="w-3.5 h-3.5" />
-                            {ann.createdAt?.seconds ? formatDistanceToNow(new Date(ann.createdAt.seconds * 1000)) + ' ago' : 'Recently'}
+                            {ann.created_at ? formatDistanceToNow(new Date(ann.created_at)) + ' ago' : 'Recently'}
                           </p>
                         </div>
-                        <span className="text-[10px] font-black bg-black text-white px-2 py-0.5 rounded-full uppercase tracking-wider">
-                          {ann.courseId}
-                        </span>
+                        {ann.course_name && (
+                          <span className="text-[10px] font-black bg-black text-white px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            {ann.course_name}
+                          </span>
+                        )}
                       </div>
                       <p className="text-gray-700 text-sm leading-relaxed mt-2">{ann.content}</p>
                     </div>
@@ -250,15 +217,15 @@ export function Announcements() {
           <div className="md:col-span-1 space-y-4">
             <Card title="Chat Channels">
               <div className="space-y-2 mt-4">
-                {['General Discussion', ...courses.map(c => c.title)].map((topic) => (
+                {[{ id: 'general', title: 'General Discussion' }, ...courses].map((topic) => (
                   <div
-                    key={topic}
-                    onClick={() => setSelectedCourseTopic(topic)}
+                    key={topic.id}
+                    onClick={() => setSelectedCourseId(topic.id)}
                     className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                      selectedCourseTopic === topic ? 'border-black bg-gray-50 font-bold' : 'border-gray-100 hover:border-gray-200'
+                      selectedCourseId === topic.id ? 'border-black bg-gray-50 font-bold' : 'border-gray-100 hover:border-gray-200'
                     }`}
                   >
-                    <p className="text-xs text-gray-900">{topic}</p>
+                    <p className="text-xs text-gray-900">{topic.title}</p>
                   </div>
                 ))}
               </div>
@@ -266,7 +233,7 @@ export function Announcements() {
           </div>
 
           <div className="md:col-span-3">
-            <Card title={`Channel: ${selectedCourseTopic}`} description="Classroom discussions and direct chat thread.">
+            <Card title={`Channel: ${courses.find(c => c.id === selectedCourseId)?.title || 'General Discussion'}`} description="Classroom discussions and direct chat thread.">
               <div className="h-96 border border-gray-100 rounded-2xl p-4 my-4 overflow-y-auto space-y-4 bg-gray-50/30">
                 {loading ? (
                   <div className="h-full flex items-center justify-center text-gray-400 italic">Connecting discussion database...</div>
@@ -277,23 +244,23 @@ export function Announcements() {
                   </div>
                 ) : (
                   messages.map((m) => {
-                    const isSelf = m.senderId === profile?.uid;
+                    const isSelf = m.author_id === profile?.uid;
                     return (
                       <div 
                         key={m.id}
                         className={`flex gap-3 max-w-[80%] ${isSelf ? 'ml-auto flex-row-reverse text-right' : 'mr-auto'}`}
                       >
                         <div className="w-8 h-8 rounded-full bg-gray-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
-                          {m.senderName?.[0] || 'U'}
+                          {m.author_name?.[0] || 'U'}
                         </div>
                         <div>
                           <div className={`p-3 rounded-2xl text-xs font-medium ${
                             isSelf ? 'bg-black text-white rounded-tr-none' : 'bg-white border border-gray-100 rounded-tl-none text-gray-800'
                           }`}>
-                            {m.message}
+                            {m.title}
                           </div>
                           <span className="text-[9px] text-gray-400 block mt-1 px-1 font-bold uppercase">
-                            {m.senderName || 'Anonymous'}
+                            {m.author_name || 'Anonymous'}
                           </span>
                         </div>
                       </div>
@@ -306,7 +273,7 @@ export function Announcements() {
                 <input 
                   type="text"
                   required
-                  placeholder={`Send message to #${selectedCourseTopic}...`}
+                  placeholder={`Start a new thread in #${courses.find(c => c.id === selectedCourseId)?.title || 'General'}...`}
                   value={chatMessage}
                   onChange={(e) => setChatMessage(e.target.value)}
                   className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black/5"

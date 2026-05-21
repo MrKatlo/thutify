@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
-import { db, logout } from '../lib/firebase';
+import { logout } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
-import { collection, query, getDocs, doc, updateDoc, orderBy } from 'firebase/firestore';
-import { BookOpen, Search, LogOut, CheckCircle, ShieldAlert, AlertCircle, Loader2, Building, RefreshCw, Users, ShieldCheck, Globe } from 'lucide-react';
+import { BookOpen, Search, LogOut, CheckCircle, ShieldAlert, AlertCircle, Loader2, Building, RefreshCw, Globe } from 'lucide-react';
 import { Button, Card } from './ui/Card';
 import { navigate } from '../hooks/useRouter';
 import { motion, AnimatePresence } from 'motion/react';
 import { Institution } from '../types';
 import { format } from 'date-fns';
+import * as cfApi from '../services/cfApi';
 
 export function PlatformAdminDashboard() {
   const { profile, isPlatformAdmin, loading: authLoading } = useAuth();
@@ -32,16 +32,11 @@ export function PlatformAdminDashboard() {
   const fetchInstitutions = async () => {
     setLoading(true);
     try {
-      const q = query(collection(db, 'institutions'), orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
-      const list: Institution[] = [];
-      snapshot.forEach(docSnap => {
-        list.push(docSnap.data() as Institution);
-      });
+      const list = await cfApi.getPlatformInstitutions();
       setInstitutions(list);
     } catch (err: any) {
       console.error("Error fetching institutions:", err);
-      showToast("Failed to fetch institutions from Firestore.", "error");
+      showToast("Failed to fetch institutions from API.", "error");
     } finally {
       setLoading(false);
     }
@@ -50,8 +45,7 @@ export function PlatformAdminDashboard() {
   const handleUpdateStatus = async (instId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
     try {
-      const docRef = doc(db, 'institutions', instId);
-      await updateDoc(docRef, { status: newStatus });
+      await cfApi.updateInstitution(instId, { status: newStatus as any });
       
       // Update local state
       setInstitutions(prev => prev.map(inst => 
@@ -61,7 +55,7 @@ export function PlatformAdminDashboard() {
       showToast(`Institution successfully ${newStatus === 'active' ? 'activated' : 'suspended'}!`, "success");
     } catch (err: any) {
       console.error("Failed to update status:", err);
-      showToast("Error persisting status update to Firestore.", "error");
+      showToast("Error persisting status update.", "error");
     }
   };
 
@@ -74,7 +68,7 @@ export function PlatformAdminDashboard() {
   const filtered = institutions.filter(inst => 
     inst.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     inst.slug.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    inst.country.toLowerCase().includes(searchTerm.toLowerCase())
+    (inst.country || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Statistics
@@ -104,7 +98,7 @@ export function PlatformAdminDashboard() {
           </p>
           <div className="flex gap-4 justify-center">
             <Button variant="outline" onClick={() => navigate('/')}>Return Home</Button>
-            <Button variant="primary" onClick={handleLogout} className="gap-2">
+            <Button onClick={handleLogout} className="gap-2 bg-black text-white">
               <LogOut className="w-4 h-4" /> Sign Out
             </Button>
           </div>
@@ -139,7 +133,7 @@ export function PlatformAdminDashboard() {
         <header className="max-w-7xl mx-auto w-full px-6 py-5 flex items-center justify-between border-b border-gray-100 bg-white shadow-sm sticky top-0 z-20">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow-lg shadow-black/10">
-              <BookOpen className="text-white w-5 h-5" />
+              < BookOpen className="text-white w-5 h-5" />
             </div>
             <div>
               <span className="font-extrabold text-lg tracking-tight text-gray-900">LearnFlow</span>
@@ -148,7 +142,7 @@ export function PlatformAdminDashboard() {
           </div>
           <div className="flex items-center gap-4">
             <div className="hidden md:block text-right">
-              <p className="text-sm font-extrabold text-gray-950">{profile?.fullName}</p>
+              <p className="text-sm font-extrabold text-gray-950">{profile?.full_name}</p>
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{profile?.email}</p>
             </div>
             <Button variant="ghost" onClick={handleLogout} className="gap-2 hover:bg-red-50 hover:text-red-600">
@@ -211,7 +205,7 @@ export function PlatformAdminDashboard() {
               
               {/* Search */}
               <div className="relative w-full md:w-80">
-                <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-400" />
+                < Search className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   value={searchTerm}
@@ -275,16 +269,16 @@ export function PlatformAdminDashboard() {
                         </td>
                         <td className="px-6 py-4">
                           <span className="px-2.5 py-1 bg-gray-50 text-[10px] font-bold uppercase rounded-md text-gray-400 border border-gray-100 tracking-wider">
-                            {inst.institutionType.replace('_', ' ')}
+                            {(inst.institutionType || '').replace('_', ' ')}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-xs font-semibold text-gray-500">
-                          {inst.createdAt?.toDate ? format(inst.createdAt.toDate(), 'MMM dd, yyyy') : 'N/A'}
+                          {inst.createdAt ? format(new Date(inst.createdAt), 'MMM dd, yyyy') : 'N/A'}
                         </td>
                         <td className="px-6 py-4">
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            inst.status === 'active' ? 'bg-green-50 text-green-600 border border-green-100' :
-                            'bg-red-50 text-red-600 border border-red-100'
+                            inst.status === 'active' ? 'bg-green-50 text-green-600 border-green-100' :
+                            'bg-red-50 text-red-600 border-red-100'
                           }`}>
                             {inst.status}
                           </span>

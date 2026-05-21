@@ -1,8 +1,8 @@
 import { useState, FormEvent } from 'react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
-import { doc, writeBatch, serverTimestamp, collection } from 'firebase/firestore';
-import { BookOpen, User, Mail, Lock, Phone, ShieldCheck, Check, Loader2, AlertCircle, ArrowLeft, Hourglass } from 'lucide-react';
+import { auth } from '../lib/firebase';
+import * as cfApi from '../services/cfApi';
+import { BookOpen, User, Mail, Lock, Phone, Loader2, AlertCircle, ArrowLeft, Hourglass, Check } from 'lucide-react';
 import { Button, Card } from './ui/Card';
 import { navigate } from '../hooks/useRouter';
 import { motion, AnimatePresence } from 'motion/react';
@@ -38,11 +38,6 @@ export function StudentSignupPage({ institution }: StudentSignupPageProps) {
     primaryColor === 'emerald-600' ? 'bg-emerald-600 hover:bg-emerald-700' :
     primaryColor === 'purple-600' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-black hover:bg-gray-800';
 
-  const brandText = 
-    primaryColor === 'blue-600' ? 'text-blue-600' :
-    primaryColor === 'emerald-600' ? 'text-emerald-600' :
-    primaryColor === 'purple-600' ? 'text-purple-600' : 'text-black';
-
   const brandBorder = 
     primaryColor === 'blue-600' ? 'border-blue-100 focus:border-blue-500 focus:ring-blue-500/5' :
     primaryColor === 'emerald-600' ? 'border-emerald-100 focus:border-emerald-500 focus:ring-emerald-500/5' :
@@ -58,51 +53,21 @@ export function StudentSignupPage({ institution }: StudentSignupPageProps) {
     setLoading(true);
     try {
       // 1. Create Firebase Auth User
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = userCredential.user.uid;
+      await createUserWithEmailAndPassword(auth, email, password);
 
-      // 2. Perform Batch Writes
-      const batch = writeBatch(db);
-      
-      // A. Write to users collection
-      const userRef = doc(db, 'users', uid);
-      batch.set(userRef, {
-        uid,
+      // 2. Submit application via Worker
+      // Worker automatically creates platform_user and institutionUser(pending)
+      await cfApi.applyToInstitution(institution.id, {
         fullName,
         email,
-        phone,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        phone
       });
 
-      // B. Write to institutionUsers with status = pending, role = student
-      const membershipRef = doc(db, 'institutionUsers', `${uid}_${institution.id}`);
-      batch.set(membershipRef, {
-        id: `${uid}_${institution.id}`,
-        institutionId: institution.id,
-        userId: uid,
-        role: 'student',
-        status: 'pending',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-
-      // C. Write to studentApplications with status = pending
-      const appRef = doc(collection(db, 'studentApplications'));
-      batch.set(appRef, {
-        id: appRef.id,
-        institutionId: institution.id,
-        userId: uid,
+      // Update platform user profile with name and phone
+      await cfApi.updateCurrentUser({
         fullName,
-        email,
-        phone,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        phone
       });
-
-      // Commit
-      await batch.commit();
 
       // Show success screen
       setSuccess(true);

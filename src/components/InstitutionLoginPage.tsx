@@ -1,8 +1,8 @@
 import { useState, FormEvent } from 'react';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { BookOpen, Mail, Lock, ShieldCheck, ArrowRight, Loader2, AlertCircle, Check, HelpCircle, ArrowLeft } from 'lucide-react';
+import { auth } from '../lib/firebase';
+import * as cfApi from '../services/cfApi';
+import { BookOpen, Mail, Lock, ShieldCheck, Loader2, AlertCircle, Check, ArrowLeft } from 'lucide-react';
 import { Button, Card } from './ui/Card';
 import { navigate } from '../hooks/useRouter';
 import { motion, AnimatePresence } from 'motion/react';
@@ -48,45 +48,30 @@ export function InstitutionLoginPage({ institution }: InstitutionLoginPageProps)
     setLoading(true);
     try {
       // 1. Sign in with Firebase Auth
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const uid = userCredential.user.uid;
+      await signInWithEmailAndPassword(auth, email, password);
 
-      // 2. Validate Membership in this institution
-      const membershipRef = doc(db, 'institutionUsers', `${uid}_${institution.id}`);
-      const membershipSnap = await getDoc(membershipRef);
+      // 2. Validate Membership in this institution via Worker
+      const membership = await cfApi.getInstitutionMembership(institution.id);
       
-      // Check if user is Platform Super Admin as a bypass
-      const userRef = doc(db, 'users', uid);
-      const userSnap = await getDoc(userRef);
-      const isPlatformAdmin = userSnap.exists() && !!userSnap.data()?.isPlatformAdmin;
-
-      if (!membershipSnap.exists() && !isPlatformAdmin) {
+      if (!membership) {
         showToast("Your account is not associated with this institution.", "error");
         auth.signOut();
         setLoading(false);
         return;
       }
 
-      if (membershipSnap.exists()) {
-        const membership = membershipSnap.data();
-        if (membership.status === 'suspended') {
-          showToast("Your institutional access has been suspended. Contact administrator.", "error");
-          auth.signOut();
-          setLoading(false);
-          return;
-        }
-        if (membership.status === 'pending') {
-          showToast("Your membership is pending approval from the administrator.", "error");
-          auth.signOut();
-          setLoading(false);
-          return;
-        }
+      if (membership.status === 'suspended') {
+        showToast("Your institutional access has been suspended. Contact administrator.", "error");
+        auth.signOut();
+        setLoading(false);
+        return;
       }
-
-      // Update lastLogin on the user document
-      await updateDoc(userRef, {
-        lastLogin: serverTimestamp()
-      }).catch(err => console.warn("Failed to update lastLogin:", err));
+      if (membership.status === 'pending') {
+        showToast("Your membership is pending approval from the administrator.", "error");
+        auth.signOut();
+        setLoading(false);
+        return;
+      }
 
       showToast("Access granted! Entering portal...", "success");
 

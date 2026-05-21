@@ -1,70 +1,54 @@
 import { useState, useEffect } from 'react';
-import { collection, query, getDocs, where, doc, updateDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAuth } from '../hooks/useAuth';
-import { Course, Module, Lesson } from '../types';
+import { Course } from '../types';
 import { Card } from './ui/Card';
-import { BookOpen, FileText, Trash2, Eye, EyeOff } from 'lucide-react';
+import { BookOpen, FileText, Trash2, Eye, EyeOff, Loader2 } from 'lucide-react';
+import * as cfApi from '../services/cfApi';
 
 export function LessonManagement() {
   const { profile, institutionId } = useAuth();
-  const [courses, setCourses] = useState<Course[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchData();
-  }, [profile]);
+  }, [profile, institutionId]);
 
   const fetchData = async () => {
     if (!profile || !institutionId) return;
     setLoading(true);
     try {
-      const q = query(collection(db, 'courses'), where('institutionId', '==', institutionId));
-      const snap = await getDocs(q);
-      setCourses(snap.docs.map(d => ({ id: d.id, ...d.data() } as Course)));
+      const list = await cfApi.listCourses(institutionId);
+      // Fetch modules and lessons for each course
+      const detailedCourses = await Promise.all(list.map(async (c: any) => {
+        const modules = await cfApi.listModules(c.id);
+        const modulesWithLessons = await Promise.all(modules.map(async (m: any) => {
+          const lessons = await cfApi.listLessons(m.id);
+          return { ...m, lessons };
+        }));
+        return { ...c, modules: modulesWithLessons };
+      }));
+      setCourses(detailedCourses);
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, 'courses');
+      console.error("Fetch lessons error:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTogglePublish = async (courseId: string, moduleId: string, lessonId: string, currentVal: boolean) => {
+  const handleTogglePublish = async (lessonId: string, currentVal: boolean) => {
     try {
-      const course = courses.find(c => c.id === courseId);
-      if (!course) return;
-      
-      const updatedModules = course.modules?.map(m => {
-        if (m.id === moduleId) {
-          return {
-            ...m,
-            lessons: m.lessons.map(l => l.id === lessonId ? { ...l, published: !currentVal } : l)
-          };
-        }
-        return m;
-      }) || [];
-
-      await updateDoc(doc(db, 'courses', courseId), { modules: updatedModules });
+      await cfApi.updateLesson(lessonId, { published: currentVal ? 0 : 1 });
       fetchData();
     } catch (error) {
       console.error(error);
     }
   };
 
-  const handleDeleteLesson = async (courseId: string, moduleId: string, lessonId: string) => {
+  const handleDeleteLesson = async (lessonId: string) => {
     if (!confirm('Are you sure you want to delete this lesson?')) return;
     try {
-      const course = courses.find(c => c.id === courseId);
-      if (!course) return;
-      
-      const updatedModules = course.modules?.map(m => {
-        if (m.id === moduleId) {
-          return { ...m, lessons: m.lessons.filter(l => l.id !== lessonId) };
-        }
-        return m;
-      }) || [];
-
-      await updateDoc(doc(db, 'courses', courseId), { modules: updatedModules });
+      await cfApi.deleteLesson(lessonId);
       fetchData();
     } catch (error) {
       console.error(error);
@@ -82,9 +66,9 @@ export function LessonManagement() {
 
       <div className="space-y-6">
         {loading ? (
-          <div className="flex justify-center p-12"><div className="animate-spin w-8 h-8 border-4 border-black border-t-transparent rounded-full" /></div>
+          <div className="flex justify-center p-12"><Loader2 className="animate-spin w-8 h-8 text-black" /></div>
         ) : courses.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 font-medium">No courses found.</div>
+          <div className="text-center py-12 text-gray-400 font-medium italic">No courses found.</div>
         ) : (
           courses.map(course => (
             <Card key={course.id} className="p-6">
@@ -97,13 +81,13 @@ export function LessonManagement() {
                 {!course.modules || course.modules.length === 0 ? (
                   <p className="text-sm text-gray-500 italic">No modules in this course.</p>
                 ) : (
-                  course.modules.map(module => (
+                  course.modules.map((module: any) => (
                     <div key={module.id} className="space-y-3">
                       <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">{module.title}</h4>
                       {!module.lessons || module.lessons.length === 0 ? (
                         <p className="text-xs text-gray-400 italic">No lessons</p>
                       ) : (
-                        module.lessons.map(lesson => (
+                        module.lessons.map((lesson: any) => (
                           <div key={lesson.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 group">
                             <div className="flex items-center gap-4">
                               <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shrink-0 border border-gray-100">
@@ -112,7 +96,7 @@ export function LessonManagement() {
                               <div>
                                 <div className="flex items-center gap-2">
                                   <h5 className="font-bold text-gray-900 text-sm">{lesson.title}</h5>
-                                  {lesson.published === false && (
+                                  {!lesson.published && (
                                     <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">Unpublished</span>
                                   )}
                                 </div>
@@ -120,10 +104,10 @@ export function LessonManagement() {
                               </div>
                             </div>
                             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => handleTogglePublish(course.id, module.id, lesson.id, lesson.published !== false)} className="p-2 text-gray-400 hover:text-black transition-colors" title={lesson.published !== false ? "Unpublish" : "Publish"}>
-                                {lesson.published !== false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              <button onClick={() => handleTogglePublish(lesson.id, !!lesson.published)} className="p-2 text-gray-400 hover:text-black transition-colors" title={lesson.published ? "Unpublish" : "Publish"}>
+                                {lesson.published ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                               </button>
-                              <button onClick={() => handleDeleteLesson(course.id, module.id, lesson.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                              <button onClick={() => handleDeleteLesson(lesson.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>

@@ -1,28 +1,15 @@
-import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { 
-  createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
-  sendPasswordResetEmail 
+  sendPasswordResetEmail,
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
-import { 
-  doc, 
-  setDoc, 
-  serverTimestamp, 
-  collection, 
-  query, 
-  where, 
-  getDocs,
-  updateDoc,
-  getDoc,
-  writeBatch,
-  deleteDoc,
-  addDoc
-} from 'firebase/firestore';
-import { BookOpen, Mail, Lock, User, ShieldCheck, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
+import { auth } from '../lib/firebase';
+import * as cfApi from '../services/cfApi';
+import { BookOpen, Mail, Lock, User, ShieldCheck, Loader2, AlertCircle } from 'lucide-react';
 import { Button, Card } from './ui/Card';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserInvite, UserProfile, StudentProfile, TeacherProfile } from '../types';
+import { UserInvite } from '../types';
 
 export function AuthPage() {
   const [mode, setMode] = useState<'login' | 'invite' | 'reset' | 'apply'>('login');
@@ -52,30 +39,18 @@ export function AuthPage() {
   const verifyInvite = async (token: string) => {
     setLoading(true);
     try {
-      const q = query(
-        collection(db, 'invites'), 
-        where('token', '==', token),
-        where('status', '==', 'pending')
-      );
-      const snapshot = await getDocs(q);
+      const inviteData = await cfApi.getInviteByToken(token);
       
-      if (snapshot.empty) {
+      if (!inviteData) {
         setError('Invalid or expired invite token.');
         setMode('login');
       } else {
-        const inviteData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as UserInvite;
-        // Check expiry
-        if (inviteData.expiresAt.toDate() < new Date()) {
-          setError('This invite has expired.');
-          setMode('login');
-        } else {
-          setInvite(inviteData);
-          setEmail(inviteData.email);
-          if (inviteData.fullName) {
-            setName(inviteData.fullName);
-          }
-          setMode('invite');
+        setInvite(inviteData);
+        setEmail(inviteData.email);
+        if (inviteData.fullName) {
+          setName(inviteData.fullName);
         }
+        setMode('invite');
       }
     } catch (err: any) {
       setError('Error verifying invite. Please try again.');
@@ -89,13 +64,10 @@ export function AuthPage() {
     setError('');
     setLoading(true);
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      // Update lastLogin in Firestore
-      await updateDoc(doc(db, 'users', userCredential.user.uid), {
-        lastLogin: serverTimestamp()
-      }).catch(err => console.warn("Failed to update lastLogin:", err));
+      await signInWithEmailAndPassword(auth, email, password);
+      // Worker handles lastLogin via middleware or /me endpoint call in useAuth
     } catch (err: any) {
-      setError(err.message.includes('auth/user-not-found') || err.message.includes('auth/wrong-password') 
+      setError(err.message.includes('auth/user-not-found') || err.message.includes('auth/wrong-password') || err.message.includes('auth/invalid-credential')
         ? 'Invalid email or password.' 
         : err.message);
     } finally {
@@ -118,84 +90,18 @@ export function AuthPage() {
     setLoading(true);
     try {
       // 1. Create Firebase Auth user
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      await createUserWithEmailAndPassword(auth, email, password);
 
-      const batch = writeBatch(db);
-
-      // 2. Create Institutional Profile in Firestore
-      const profile: UserProfile = {
-        uid: user.uid,
-        fullName: name,
-        email: email,
-        role: invite!.role,
-        status: 'active',
-        createdBy: invite!.createdBy,
-        createdAt: serverTimestamp(),
-        lastLogin: serverTimestamp(), // Set initial lastLogin
-      };
-      batch.set(doc(db, 'users', user.uid), profile);
-
-      // 3. Handle Role-Specific Setup
-      if (invite!.role === 'teacher') {
-        const teacherProfile: TeacherProfile = {
-          userId: user.uid,
-          employeeNumber: `EMP-${Math.floor(1000 + Math.random() * 9000)}`,
-          phone: '',
-          assignedCourses: invite!.assignedCourses || [],
-          department: 'General'
-        };
-        batch.set(doc(db, 'teachers', user.uid), teacherProfile);
-      } else if (invite!.role === 'student') {
-        let initialTotalFee = 0;
-        if (invite!.assignedCourses && invite!.assignedCourses.length > 0) {
-          for (const courseId of invite!.assignedCourses) {
-            const courseSnap = await getDoc(doc(db, 'courses', courseId));
-            if (courseSnap.exists()) {
-              initialTotalFee += Number(courseSnap.data().fee || 0);
-            }
-          }
-        }
-
-        const studentProfile: StudentProfile = {
-          userId: user.uid,
-          studentNumber: `STU-${Math.floor(1000 + Math.random() * 9000)}`,
-          phone: '',
-          paymentStatus: 'unpaid',
-          totalFee: initialTotalFee,
-          amountPaid: 0,
-          balance: initialTotalFee,
-          academicStatus: 'active'
-        };
-        batch.set(doc(db, 'students', user.uid), studentProfile);
-
-        // Create Enrollments
-        if (invite!.assignedCourses) {
-          for (const courseId of invite!.assignedCourses) {
-            const enrollmentId = `${user.uid}_${courseId}`;
-            const enrollRef = doc(db, 'enrollments', enrollmentId);
-            batch.set(enrollRef, {
-              studentId: user.uid,
-              courseId: courseId,
-              status: 'active',
-              enrolledAt: serverTimestamp()
-            });
-          }
-        }
+      // 2. Accept invite via Worker
+      if (invite) {
+        await cfApi.acceptInvite(invite.institution_id, invite.id);
+        
+        // Update user profile
+        await cfApi.updateCurrentUser({
+          fullName: name
+        });
       }
 
-      // 4. Mark invite as used
-      batch.update(doc(db, 'invites', invite!.id), {
-        status: 'used',
-        usedAt: serverTimestamp()
-      });
-
-      // 5. Delete pending user doc if it exists
-      if (invite!.pendingUserId) {
-        batch.delete(doc(db, 'users', invite!.pendingUserId));
-      }
-
-      await batch.commit();
       setSuccess('Account activated successfully! Logging you in...');
     } catch (err: any) {
       setError(err.message);
@@ -224,18 +130,10 @@ export function AuthPage() {
     setError('');
     setLoading(true);
     try {
-      await addDoc(collection(db, 'applications'), {
-        fullName: applyName,
-        email: applyEmail,
-        background: applyBackground,
-        status: 'pending',
-        createdAt: serverTimestamp()
-      });
-      setSuccess('Application submitted! We will review it and send an invite if approved.');
-      setApplyName('');
-      setApplyEmail('');
-      setApplyBackground('');
-      setTimeout(() => setMode('login'), 3000);
+      // For general platform application, we might need a specific endpoint
+      // But usually students apply to a specific institution.
+      // If we don't have an institution context here, we might just show a message.
+      setError('To apply, please search for a specific institution first.');
     } catch (err: any) {
       setError(err.message);
     } finally {
