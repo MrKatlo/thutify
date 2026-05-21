@@ -2,15 +2,19 @@ import { useState, useEffect } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import * as cfApi from '../services/cfApi';
+import { Institution } from '../types';
 
 export interface MergedProfile {
   uid: string;
   fullName: string;
   email: string;
   phone: string;
+  photoURL?: string;
   isPlatformAdmin: boolean;
   role?: 'owner' | 'admin' | 'teacher' | 'student';
   status?: 'active' | 'pending' | 'suspended';
+  institution_id?: string;
+  completedLessons?: string[];
 }
 
 let globalActiveInstitutionId: string | null = null;
@@ -26,6 +30,7 @@ export function setActiveInstitutionId(id: string | null) {
 export function useAuth(activeInstitutionId?: string | null) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<MergedProfile | null>(null);
+  const [institution, setInstitution] = useState<Institution | null>(null);
   const [loading, setLoading] = useState(true);
 
   const resolvedInstitutionId = activeInstitutionId !== undefined ? activeInstitutionId : globalActiveInstitutionId;
@@ -58,12 +63,11 @@ export function useAuth(activeInstitutionId?: string | null) {
 
       if (firebaseUser) {
         try {
-          const platformUser = await cfApi.getCurrentUser();
-          let membershipData = null;
-
-          if (currentInstId) {
-            membershipData = await cfApi.getInstitutionMembership(currentInstId);
-          }
+          const [platformUser, membershipData, instData] = await Promise.all([
+            cfApi.getCurrentUser(),
+            currentInstId ? cfApi.getInstitutionMembership(currentInstId) : Promise.resolve(null),
+            currentInstId ? cfApi.getInstitution(currentInstId) : Promise.resolve(null)
+          ]);
 
           if (isMounted) {
             setProfile({
@@ -71,15 +75,20 @@ export function useAuth(activeInstitutionId?: string | null) {
               fullName: platformUser?.full_name || firebaseUser.displayName || '',
               email: platformUser?.email || firebaseUser.email || '',
               phone: platformUser?.phone || '',
+              photoURL: platformUser?.photo_url || firebaseUser.photoURL || '',
               isPlatformAdmin: !!platformUser?.is_platform_admin,
               role: membershipData?.role,
               status: membershipData?.status,
+              institution_id: currentInstId || undefined,
+              completedLessons: platformUser?.completed_lessons || []
             });
+            setInstitution(instData);
           }
         } catch (err) {
           console.error('Error loading auth profile:', err);
           if (isMounted) {
             setProfile(null);
+            setInstitution(null);
           }
         } finally {
           if (isMounted) {
@@ -88,6 +97,7 @@ export function useAuth(activeInstitutionId?: string | null) {
         }
       } else {
         setProfile(null);
+        setInstitution(null);
         setLoading(false);
       }
     });
@@ -101,6 +111,7 @@ export function useAuth(activeInstitutionId?: string | null) {
   return {
     user,
     profile,
+    institution,
     loading,
     isAuthenticated: !!user && !!profile,
     isActive: profile?.status === 'active' || !!profile?.isPlatformAdmin,

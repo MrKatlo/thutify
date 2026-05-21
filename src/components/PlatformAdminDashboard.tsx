@@ -142,7 +142,7 @@ export function PlatformAdminDashboard() {
           </div>
           <div className="flex items-center gap-4">
             <div className="hidden md:block text-right">
-              <p className="text-sm font-extrabold text-gray-950">{profile?.full_name}</p>
+              <p className="text-sm font-extrabold text-gray-950">{profile?.fullName}</p>
               <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{profile?.email}</p>
             </div>
             <Button variant="ghost" onClick={handleLogout} className="gap-2 hover:bg-red-50 hover:text-red-600">

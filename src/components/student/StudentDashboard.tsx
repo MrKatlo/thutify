@@ -42,7 +42,7 @@ export function StudentDashboard({ setActiveTab }: { setActiveTab: (t: string) =
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
         <div className="relative z-10 space-y-2">
           <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Academic Portal</span>
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight">Welcome back, {profile?.full_name}!</h1>
+          <h1 className="text-3xl md:text-4xl font-black tracking-tight">Welcome back, {profile?.fullName}!</h1>
           <p className="text-gray-400 font-medium max-w-lg">Your academic journey continues. Track your progress, attend live classes, and complete your modules.</p>
         </div>
         <div className="relative z-10 flex gap-3">

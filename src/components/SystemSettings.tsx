@@ -17,8 +17,8 @@ export function SystemSettings() {
   const [primaryColor, setPrimaryColor] = useState('black');
   
   // Personal States (Student/Teacher)
-  const [displayName, setDisplayName] = useState(profile?.full_name || '');
-  const [photoURL, setPhotoURL] = useState(profile?.photo_url || '');
+  const [displayName, setDisplayName] = useState(profile?.fullName || '');
+  const [photoURL, setPhotoURL] = useState(profile?.photoURL || '');
 
   useEffect(() => {
     if (institutionId) {
@@ -129,7 +129,7 @@ export function SystemSettings() {
                     <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Avatar Source URL</label>
                     <div className="flex items-center gap-6">
                       <div className="w-16 h-16 rounded-2xl bg-gray-900 text-white flex items-center justify-center font-black text-xl overflow-hidden shadow-lg shadow-black/10">
-                         {photoURL ? <img src={photoURL} className="w-full h-full object-cover" /> : profile?.full_name?.charAt(0)}
+                         {photoURL ? <img src={photoURL} className="w-full h-full object-cover" /> : profile?.fullName?.charAt(0)}
                       </div>
                       <input 
                         type="text"

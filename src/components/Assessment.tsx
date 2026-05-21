@@ -184,8 +184,9 @@ export function Assessment() {
           quiz_title: activeQuizAttempt.title,
           course_name: activeQuizAttempt.course_name || activeQuizAttempt.courseName,
           student_id: profile.uid,
-          student_name: profile.full_name,
+          student_name: profile.fullName,
           answers,
+
           score: finalPercent,
           questions: activeQuizAttempt.questions,
           status: 'completed'

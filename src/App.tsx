@@ -19,7 +19,7 @@ import { Messaging } from './components/Messaging';
 import { Certificates } from './components/Certificates';
 import { PlaceholderView } from './components/PlaceholderView';
 import { motion, AnimatePresence } from 'motion/react';
-import { Menu, AlertCircle, LogOut, BookOpen } from 'lucide-react';
+import { Menu, AlertCircle, LogOut, BookOpen, Search } from 'lucide-react';
 import { Button } from './components/ui/Card';
 import { logout } from './lib/firebase';
 import { useRouter, navigate } from './hooks/useRouter';
@@ -29,6 +29,7 @@ import { InstitutionSearchPage } from './components/InstitutionSearchPage';
 import { PlatformAdminDashboard } from './components/PlatformAdminDashboard';
 import { InstitutionLoginPage } from './components/InstitutionLoginPage';
 import { StudentSignupPage } from './components/StudentSignupPage';
+import { NotificationBell } from './components/notifications/NotificationBell';
 import { Institution } from './types';
 import * as cfApi from './services/cfApi';
 
@@ -257,11 +258,11 @@ export default function App() {
                   <NotificationBell />
                   <div className="flex items-center gap-3 pl-4 border-l border-gray-100">
                     <div className="text-right hidden xl:block">
-                      <p className="text-xs font-black text-gray-900 leading-tight">{profile.full_name}</p>
+                      <p className="text-xs font-black text-gray-900 leading-tight">{profile.fullName}</p>
                       <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{profile.role}</p>
                     </div>
                     <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center font-black shadow-lg shadow-black/10">
-                      {profile.full_name?.charAt(0)}
+                      {profile.fullName?.charAt(0)}
                     </div>
                   </div>
                 </div>
@@ -341,20 +342,6 @@ export default function App() {
               </Button>
             </div>
           </div>
-        </div>
-      );
-  }
-}
-xs py-3 px-6 rounded-xl shadow-lg shadow-black/5">
-                Go to Homepage
-              </Button>
-            </div>
-          </div>
-        </div>
-      );
-  }
-}
->
         </div>
       );
   }

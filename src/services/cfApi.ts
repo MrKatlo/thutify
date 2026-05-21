@@ -29,7 +29,7 @@ async function apiCall(
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.error || `HTTP ${response.status}`);
+    throw new Error((data as any).error || `HTTP ${response.status}`);
   }
   return data;
 }
@@ -46,14 +46,22 @@ export async function updateCurrentUser(data: { fullName?: string; phone?: strin
 
 // ============== INSTITUTIONS ==============
 
+export async function getPlatformInstitutions(): Promise<any> {
+  return apiCall('GET', '/institutions');
+}
+
 export async function getInstitutionBySlug(slug: string): Promise<any> {
-  return fetch(`${API_BASE}/public/institutions/by-slug/${slug}`).then(r => r.json());
+  const response = await fetch(`${API_BASE}/public/institutions/by-slug/${slug}`);
+  const data = await response.json();
+  if (!response.ok) throw new Error((data as any).error || 'Institution not found');
+  return data;
 }
 
 export async function searchInstitutions(q: string): Promise<any> {
-  return fetch(`${API_BASE}/public/institutions/search?q=${encodeURIComponent(q)}`).then(r =>
-    r.json().then(d => d || [])
-  );
+  const response = await fetch(`${API_BASE}/public/institutions/search?q=${encodeURIComponent(q)}`);
+  const data = await response.json();
+  if (!response.ok) return [];
+  return data || [];
 }
 
 export async function createInstitution(data: {
@@ -434,8 +442,16 @@ export async function inviteUser(institutionId: string, data: { email: string; r
   return apiCall('POST', `/institutions/${institutionId}/invites`, data);
 }
 
-export async function deleteInvite(inviteId: string): Promise<any> {
-  return apiCall('DELETE', `/invites/${inviteId}`);
+export async function deleteInvite(institutionId: string, inviteId: string): Promise<any> {
+  return apiCall('DELETE', `/institutions/${institutionId}/invites/${inviteId}`);
+}
+
+export async function getInviteByToken(token: string): Promise<any> {
+  return fetch(`${API_BASE}/public/invites/by-token/${token}`).then(r => r.json());
+}
+
+export async function acceptInvite(institutionId: string, inviteId: string): Promise<any> {
+  return apiCall('POST', `/institutions/${institutionId}/invites/${inviteId}/accept`, {});
 }
 
 // ============== APPLICATIONS ==============
@@ -444,12 +460,16 @@ export async function listApplications(institutionId: string): Promise<any> {
   return apiCall('GET', `/institutions/${institutionId}/applications`);
 }
 
-export async function applyToInstitution(institutionId: string): Promise<any> {
-  return apiCall('POST', `/institutions/${institutionId}/applications`, {});
+export async function applyToInstitution(institutionId: string, data: any): Promise<any> {
+  return apiCall('POST', `/institutions/${institutionId}/applications`, data);
 }
 
 export async function approveApplication(institutionId: string, appId: string): Promise<any> {
   return apiCall('PATCH', `/institutions/${institutionId}/applications/${appId}`, { status: 'approved' });
+}
+
+export async function rejectApplication(institutionId: string, appId: string): Promise<any> {
+  return apiCall('PATCH', `/institutions/${institutionId}/applications/${appId}`, { status: 'rejected' });
 }
 
 // ============== MATERIALS ==============
@@ -486,13 +506,31 @@ export async function uploadFile(file: File, key?: string, token?: string): Prom
 
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.error || 'Upload failed');
+    throw new Error((data as any).error || 'Upload failed');
   }
   return data;
 }
 
 export async function deleteFile(key: string): Promise<any> {
   return apiCall('DELETE', `/storage/object?key=${encodeURIComponent(key)}`);
+}
+
+// ============== GENERIC CRUD ==============
+
+export async function readRecords(table: string): Promise<any> {
+  return apiCall('GET', `/records/${table}`);
+}
+
+export async function createRecord(table: string, data: any): Promise<any> {
+  return apiCall('POST', `/records/${table}`, data);
+}
+
+export async function updateRecord(table: string, data: any, query: any): Promise<any> {
+  return apiCall('PATCH', `/records/${table}`, { data, query });
+}
+
+export async function deleteRecord(table: string, query: any): Promise<any> {
+  return apiCall('DELETE', `/records/${table}`, query);
 }
 
 // ============== DASHBOARD ==============

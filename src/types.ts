@@ -78,6 +78,7 @@ export interface UserInvite {
   expiresAt: any;
   createdBy: string;
   pendingUserId?: string;
+  institution_id: string;
 }
 
 export interface PaymentRecord {
