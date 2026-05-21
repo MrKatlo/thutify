@@ -25,14 +25,17 @@ const GOOGLE_CERTS_URL =
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
   'Access-Control-Max-Age': '86400',
 };
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    },
   });
 }
 
@@ -77,7 +80,7 @@ async function importX509Pem(pem: string): Promise<CryptoKey> {
   const spki = extractSpkiFromCert(der);
   return crypto.subtle.importKey(
     'spki',
-    spki,
+    spki.buffer as ArrayBuffer,
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
     false,
     ['verify'],
@@ -167,7 +170,7 @@ async function verifyFirebaseIdToken(token: string): Promise<VerifiedToken | nul
       atob(sigB64.replace(/-/g, '+').replace(/_/g, '/')),
       (c) => c.charCodeAt(0),
     );
-    const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, sig, signed);
+    const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, sig.buffer as ArrayBuffer, signed.buffer as ArrayBuffer);
     if (!ok) return null;
 
     return {
@@ -248,13 +251,22 @@ async function requireMembership(
 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
-    if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+    // Handle CORS preflight requests
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: corsHeaders,
+      });
+    }
 
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\/+|\/+$/g, '');
     const segs = path.split('/');
 
     try {
+      // Log requests in development
+      console.log(`[Worker] ${request.method} ${url.pathname}`);
+
       if (segs[0] !== 'api') return errorResponse('Not found', 404);
 
       // Public routes (no auth)
@@ -2410,7 +2422,7 @@ async function routeStorage(
     if (!key) return errorResponse('key required', 400);
     const obj = await env.BUCKET.get(key);
     if (!obj) return errorResponse('Not found', 404);
-    return new Response(obj.body, {
+    return new Response(obj.body as any, {
       headers: {
         ...corsHeaders,
         'Content-Type': obj.httpMetadata?.contentType || 'application/octet-stream',
