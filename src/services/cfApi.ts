@@ -1,6 +1,6 @@
 import { getAuth } from 'firebase/auth';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8787/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8788/api';
 
 async function getToken(): Promise<string> {
   const auth = getAuth();
