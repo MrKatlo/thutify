@@ -111,6 +111,7 @@ CREATE TABLE teacher_profiles (
   institution_id TEXT NOT NULL,
   employee_number TEXT NOT NULL,
   phone TEXT DEFAULT '',
+  assigned_courses TEXT DEFAULT '[]', -- JSON array of course_ids
   department TEXT DEFAULT '',
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -286,21 +287,26 @@ CREATE TABLE assignments (
   id TEXT PRIMARY KEY,
   institution_id TEXT NOT NULL,
   course_id TEXT NOT NULL,
+  lesson_id TEXT,
   title TEXT NOT NULL,
   description TEXT DEFAULT '',
   teacher_id TEXT NOT NULL,
   file_url TEXT, -- reference link
   due_date TEXT,
+  status TEXT DEFAULT 'draft' CHECK (status IN ('draft','published','archived')),
   total_points INTEGER DEFAULT 100,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
   FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+  FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE SET NULL,
   FOREIGN KEY (teacher_id) REFERENCES platform_users(uid)
 );
 CREATE INDEX idx_assignments_inst ON assignments(institution_id);
 CREATE INDEX idx_assignments_course ON assignments(course_id);
+CREATE INDEX idx_assignments_lesson ON assignments(lesson_id);
 CREATE INDEX idx_assignments_teacher ON assignments(teacher_id);
+CREATE INDEX idx_assignments_status ON assignments(status);
 
 -- ============= ASSIGNMENT SUBMISSIONS =============
 CREATE TABLE submissions (
@@ -308,6 +314,7 @@ CREATE TABLE submissions (
   assignment_id TEXT NOT NULL,
   student_id TEXT NOT NULL,
   institution_id TEXT NOT NULL,
+  submission_content TEXT,
   file_url TEXT, -- can be R2 key or external URL
   notes TEXT,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending','graded','returned')),
@@ -324,12 +331,14 @@ CREATE TABLE submissions (
 CREATE INDEX idx_submissions_assignment ON submissions(assignment_id);
 CREATE INDEX idx_submissions_student ON submissions(student_id);
 CREATE INDEX idx_submissions_inst ON submissions(institution_id);
+CREATE INDEX idx_submissions_status ON submissions(status);
 
 -- ============= QUIZZES =============
 CREATE TABLE quizzes (
   id TEXT PRIMARY KEY,
   institution_id TEXT NOT NULL,
   course_id TEXT NOT NULL,
+  lesson_id TEXT,
   teacher_id TEXT NOT NULL,
   title TEXT NOT NULL,
   time_limit_minutes INTEGER DEFAULT 15,
@@ -339,10 +348,13 @@ CREATE TABLE quizzes (
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
   FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+  FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE SET NULL,
   FOREIGN KEY (teacher_id) REFERENCES platform_users(uid)
 );
 CREATE INDEX idx_quizzes_inst ON quizzes(institution_id);
 CREATE INDEX idx_quizzes_course ON quizzes(course_id);
+CREATE INDEX idx_quizzes_lesson ON quizzes(lesson_id);
+CREATE INDEX idx_quizzes_status ON quizzes(status);
 
 -- ============= QUIZ ATTEMPTS =============
 CREATE TABLE quiz_attempts (
@@ -374,6 +386,7 @@ CREATE TABLE attendance_sessions (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
   FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+  FOREIGN KEY (teacher_id) REFERENCES platform_users(uid) ON DELETE SET NULL,
   UNIQUE(course_id, session_date)
 );
 CREATE INDEX idx_attendance_sessions_course ON attendance_sessions(course_id, session_date);
@@ -406,9 +419,11 @@ CREATE TABLE live_classes (
   scheduled_at TEXT NOT NULL,
   duration_minutes INTEGER DEFAULT 60,
   platform TEXT NOT NULL CHECK (platform IN ('zoom','google_meet','custom')),
-  meeting_url TEXT NOT NULL,
+  meeting_url TEXT,
   recording_r2_key TEXT,
   status TEXT DEFAULT 'scheduled' CHECK (status IN ('scheduled','live','completed','cancelled')),
+  started_at TEXT,
+  ended_at TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
@@ -445,17 +460,20 @@ CREATE TABLE announcements (
   id TEXT PRIMARY KEY,
   institution_id TEXT NOT NULL,
   course_id TEXT, -- NULL = global to institution
+  title TEXT DEFAULT 'Announcement',
   content TEXT NOT NULL,
   author_id TEXT NOT NULL,
   author_name TEXT NOT NULL,
   priority TEXT DEFAULT 'normal' CHECK (priority IN ('low','normal','high')),
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
   FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
   FOREIGN KEY (author_id) REFERENCES platform_users(uid)
 );
 CREATE INDEX idx_announcements_inst ON announcements(institution_id, created_at DESC);
 CREATE INDEX idx_announcements_course ON announcements(course_id);
+CREATE INDEX idx_announcements_priority ON announcements(institution_id, priority);
 
 -- ============= DISCUSSIONS (per-course threads) =============
 CREATE TABLE discussions (
@@ -464,6 +482,9 @@ CREATE TABLE discussions (
   course_id TEXT NOT NULL,
   title TEXT NOT NULL,
   author_id TEXT NOT NULL,
+  author_name TEXT DEFAULT '',
+  status TEXT DEFAULT 'open' CHECK (status IN ('open','locked','archived')),
+  pinned INTEGER DEFAULT 0,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
@@ -471,6 +492,7 @@ CREATE TABLE discussions (
   FOREIGN KEY (author_id) REFERENCES platform_users(uid)
 );
 CREATE INDEX idx_discussions_course ON discussions(course_id, created_at DESC);
+CREATE INDEX idx_discussions_status ON discussions(course_id, status, pinned);
 
 -- ============= DISCUSSION POSTS =============
 CREATE TABLE discussion_posts (
@@ -485,21 +507,45 @@ CREATE TABLE discussion_posts (
 );
 CREATE INDEX idx_discussion_posts_discussion ON discussion_posts(discussion_id, created_at);
 
+-- ============= CONVERSATIONS =============
+CREATE TABLE conversations (
+  id TEXT PRIMARY KEY,
+  institution_id TEXT NOT NULL,
+  participant_a_user_id TEXT NOT NULL,
+  participant_b_user_id TEXT NOT NULL,
+  last_message_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
+  FOREIGN KEY (participant_a_user_id) REFERENCES platform_users(uid) ON DELETE CASCADE,
+  FOREIGN KEY (participant_b_user_id) REFERENCES platform_users(uid) ON DELETE CASCADE,
+  UNIQUE(institution_id, participant_a_user_id, participant_b_user_id)
+);
+CREATE INDEX idx_conversations_institution ON conversations(institution_id, updated_at DESC);
+CREATE INDEX idx_conversations_participant_a ON conversations(participant_a_user_id, updated_at DESC);
+CREATE INDEX idx_conversations_participant_b ON conversations(participant_b_user_id, updated_at DESC);
+
 -- ============= DIRECT MESSAGES =============
 CREATE TABLE messages (
   id TEXT PRIMARY KEY,
   institution_id TEXT NOT NULL,
+  conversation_id TEXT,
   from_user_id TEXT NOT NULL,
+  from_user_name TEXT DEFAULT '',
   to_user_id TEXT NOT NULL,
+  to_user_name TEXT DEFAULT '',
   content TEXT NOT NULL,
   read_at TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
+  FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL,
   FOREIGN KEY (from_user_id) REFERENCES platform_users(uid),
   FOREIGN KEY (to_user_id) REFERENCES platform_users(uid)
 );
 CREATE INDEX idx_messages_to ON messages(to_user_id, created_at DESC);
 CREATE INDEX idx_messages_from ON messages(from_user_id, created_at DESC);
+CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at DESC);
+CREATE INDEX idx_messages_unread ON messages(to_user_id, read_at, created_at DESC);
 
 -- ============= NOTIFICATIONS =============
 CREATE TABLE notifications (
@@ -608,16 +654,19 @@ CREATE TABLE content_library (
   institution_id TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
-  r2_key TEXT NOT NULL,
+  r2_key TEXT,
+  download_url TEXT,
   file_type TEXT NOT NULL, -- 'pdf', 'video', 'slides', 'doc', 'image'
   file_size INTEGER,
   category TEXT,
+  download_count INTEGER DEFAULT 0,
   uploader_id TEXT NOT NULL,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (institution_id) REFERENCES institutions(id) ON DELETE CASCADE,
   FOREIGN KEY (uploader_id) REFERENCES platform_users(uid)
 );
 CREATE INDEX idx_content_inst ON content_library(institution_id, file_type);
+CREATE INDEX idx_content_category ON content_library(institution_id, category);
 
 -- ============= CMS PAGES =============
 CREATE TABLE cms_pages (
@@ -705,7 +754,12 @@ CREATE TABLE password_reset_requests (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL,
   institution_id TEXT,
+  token TEXT NOT NULL UNIQUE,
+  requested_by_user_id TEXT,
   ip_address TEXT,
+  expires_at TEXT,
+  used_at TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_password_reset_email ON password_reset_requests(email, created_at DESC);
+CREATE INDEX idx_password_reset_token ON password_reset_requests(token);

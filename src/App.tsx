@@ -39,7 +39,7 @@ export default function App() {
   const [instLoading, setInstLoading] = useState(false);
   const [instError, setInstError] = useState<'not-found' | 'suspended' | null>(null);
 
-  const { user, profile, loading: authLoading, isAdmin, isTeacher } = useAuth();
+  const { user, profile, loading: authLoading, isOwner, isAdmin, isTeacher } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -159,7 +159,6 @@ export default function App() {
     case 'platform-admin':
       return <PlatformAdminDashboard />;
     case 'institution-login':
-    case 'teacher-login':
       if (!activeInstitution) return null;
       return <InstitutionLoginPage institution={activeInstitution} />;
     case 'student-signup':
@@ -182,7 +181,7 @@ export default function App() {
               </div>
               <h1 className="text-2xl font-bold mb-2">Unauthorized Access</h1>
               <p className="text-gray-500 mb-8 leading-relaxed font-semibold">
-                Your account is not associated with this institution. Please contact your administrator for an invite.
+                Your account is not associated with this institution. Please contact your institution owner for an invite.
               </p>
               <div className="flex gap-4 justify-center">
                 <Button variant="outline" onClick={() => navigate('/')}>Return Home</Button>
@@ -204,7 +203,7 @@ export default function App() {
               </div>
               <h1 className="text-2xl font-bold mb-2">Account Suspended</h1>
               <p className="text-gray-500 mb-8 leading-relaxed font-semibold">
-                Your institutional access has been suspended. Please contact the administrative office for more information.
+                Your institutional access has been suspended. Please contact your institution owner or support team for more information.
               </p>
               <Button onClick={logout} className="gap-2">
                 <LogOut className="w-4 h-4" /> Sign Out
@@ -223,7 +222,26 @@ export default function App() {
               </div>
               <h1 className="text-2xl font-bold mb-2">Registration Pending</h1>
               <p className="text-gray-500 mb-8 leading-relaxed font-semibold">
-                Your student application is currently pending approval. Once an administrator approves your request, you will receive full portal access.
+                Your student application is currently pending approval. Once the institution owner approves your request, you will receive full portal access.
+              </p>
+              <Button onClick={logout} className="gap-2">
+                <LogOut className="w-4 h-4" /> Sign Out
+              </Button>
+            </div>
+          </div>
+        );
+      }
+
+      if (profile.status === 'rejected') {
+        return (
+          <div className="min-h-screen flex items-center justify-center bg-[#fdfdfc] p-6 text-center font-sans">
+            <div className="max-w-md">
+              <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <AlertCircle className="w-8 h-8" />
+              </div>
+              <h1 className="text-2xl font-bold mb-2">Application Rejected</h1>
+              <p className="text-gray-500 mb-8 leading-relaxed font-semibold">
+                Your institution application was rejected. Contact the institution administrator if you need help or want to reapply.
               </p>
               <Button onClick={logout} className="gap-2">
                 <LogOut className="w-4 h-4" /> Sign Out
@@ -298,15 +316,15 @@ export default function App() {
                   >
                     {(() => {
                       if (activeTab.startsWith('dashboard')) return <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'students/all') return (isAdmin || isTeacher) ? <StudentManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'teachers/all') return isAdmin ? <TeacherManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'users/roles' || activeTab === 'users/permissions') return isAdmin ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('students/')) return (isOwner || isAdmin || isTeacher) ? <StudentManagement activeTab={activeTab} /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('teachers/')) return (isOwner || isAdmin) ? <TeacherManagement activeTab={activeTab} /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'users/roles' || activeTab === 'users/permissions') return isOwner ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab === 'courses/all') return <CourseList />;
-                      if (activeTab === 'content/modules') return (isAdmin || isTeacher) ? <ModuleManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'content/lessons') return (isAdmin || isTeacher) ? <LessonManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'content/modules') return (isOwner || isTeacher) ? <ModuleManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'content/lessons') return (isOwner || isTeacher) ? <LessonManagement /> : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab.startsWith('assignments/')) return <Assessment />;
-                      if (activeTab.startsWith('attendance/')) return (isAdmin || isTeacher) ? <Attendance /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'finance/payments') return isAdmin ? <Financials /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('attendance/')) return (isOwner || isTeacher) ? <Attendance /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'finance/payments') return isOwner ? <Financials /> : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab.startsWith('reports/')) return <Reports />;
                       if (activeTab === 'communication/announcements') return <Announcements />;
                       if (activeTab === 'communication/live-classes') return <LiveClasses />;

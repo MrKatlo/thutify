@@ -6,10 +6,10 @@ interface RefundListProps {
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   loading: boolean;
-  isAdmin: boolean;
+  isOwner: boolean;
 }
 
-export function RefundList({ refunds, onApprove, onReject, loading, isAdmin }: RefundListProps) {
+export function RefundList({ refunds, onApprove, onReject, loading, isOwner }: RefundListProps) {
   return (
     <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm mt-6">
       <div className="overflow-x-auto">
@@ -43,7 +43,7 @@ export function RefundList({ refunds, onApprove, onReject, loading, isAdmin }: R
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    {ref.status === 'pending' && isAdmin && (
+                    {ref.status === 'pending' && isOwner && (
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => onApprove(ref.id)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"><CheckCircle2 className="w-4 h-4" /></button>
                         <button onClick={() => onReject(ref.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><XCircle className="w-4 h-4" /></button>

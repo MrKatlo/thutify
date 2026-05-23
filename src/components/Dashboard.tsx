@@ -10,9 +10,9 @@ interface DashboardProps {
 }
 
 export function Dashboard({ setActiveTab }: DashboardProps) {
-  const { profile, isAdmin, institutionId } = useAuth();
+  const { profile, isOwner, institutionId } = useAuth();
 
-  // Admin & Teacher stats
+  // Owner & Teacher stats
   const [stats, setStats] = useState({
     studentsCount: 0,
     teachersCount: 0,
@@ -108,7 +108,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
         ]);
 
       } else {
-        // --- ADMIN & TEACHER DASHBOARD ---
+        // --- OWNER & TEACHER DASHBOARD ---
         const [dashStats, courses, liveClasses, announcements, enrollments] = await Promise.all([
           cfApi.getDashboardStats(institutionId),
           cfApi.listCourses(institutionId),
@@ -145,7 +145,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
           avgProgress: 82
         });
 
-        // Set live classes list for teachers/admins
+        // Set live classes list for teachers/owners
         const classes = liveClasses.slice(0, 3);
         setUpcomingClasses(classes);
 
@@ -170,7 +170,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
     { type: 'student', title: 'Student Enrolled: Maria Garcia', meta: 'Physics 101 • Active', date: 'May 14' }
   ];
 
-  const getAdminStatsList = () => [
+  const getOwnerStatsList = () => [
     { label: 'Total Students', value: stats.studentsCount.toString(), icon: Users, color: 'bg-blue-50 text-blue-600', tab: 'students' },
     { label: 'Total Teachers', value: stats.teachersCount.toString(), icon: BookOpen, color: 'bg-green-50 text-green-600', tab: 'teachers' },
     { label: 'Total Courses', value: stats.coursesCount.toString(), icon: Calendar, color: 'bg-orange-50 text-orange-600', tab: 'courses' },
@@ -191,8 +191,8 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
     { label: 'Payment Balance', value: `$${studentStats.balance.toLocaleString()}`, icon: DollarSign, color: studentStats.balance > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600', tab: 'financials' },
   ];
 
-  const statsList = isAdmin
-    ? getAdminStatsList()
+  const statsList = isOwner
+    ? getOwnerStatsList()
     : profile?.role === 'teacher'
     ? getTeacherStatsList()
     : getStudentStatsList();
@@ -372,9 +372,9 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
             </div>
           </Card>
 
-          <Card title={isAdmin ? 'Unpaid Balance Alerts' : 'Learning Progress'}>
+          <Card title={isOwner ? 'Unpaid Balance Alerts' : 'Learning Progress'}>
              <div className="space-y-6 mt-4">
-               {isAdmin ? (
+               {isOwner ? (
                  <>
                    {[
                      { name: 'Alex Johnson', balance: 250 },

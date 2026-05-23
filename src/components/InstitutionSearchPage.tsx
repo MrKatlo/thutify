@@ -97,7 +97,7 @@ export function InstitutionSearchPage() {
                   <Compass className="w-10 h-10 mx-auto text-gray-300 animate-bounce" />
                   <div className="space-y-1">
                     <p className="text-sm font-bold text-gray-500">No institutions found</p>
-                    <p className="text-xs text-gray-400 max-w-xs mx-auto">Double check spelling or ask your administrator for the exact slug link.</p>
+                    <p className="text-xs text-gray-400 max-w-xs mx-auto">Double check spelling or ask your institution owner or staff for the exact slug link.</p>
                   </div>
                 </div>
               ) : (

@@ -125,11 +125,16 @@ export function UserManagement() {
   };
 
   const handleApproveApplication = (app: any) => {
-    setActiveApplicationId(app.id);
-    setInviteFullName(app.fullName || app.full_name);
-    setInviteEmail(app.email);
-    setInviteRole('student');
-    setShowInviteForm(true);
+    if (!institutionId) return;
+    setLoading(true);
+    cfApi.approveApplication(institutionId, app.id)
+      .then(() => fetchData())
+      .catch((error) => {
+        console.error("Approve application error:", error);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
 
   const handleRejectApplication = async (appId: string) => {
@@ -356,7 +361,7 @@ export function UserManagement() {
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Role</label>
                   <div className="grid grid-cols-3 gap-2">
-                    {['student', 'teacher', 'admin'].map((r) => (
+                    {['student', 'teacher'].map((r) => (
                       <button key={r} type="button" onClick={() => setInviteRole(r as any)} className={`py-2 text-[10px] font-black rounded-lg border-2 uppercase tracking-wider transition-all ${inviteRole === r ? 'border-black bg-black text-white' : 'border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-200'}`}>{r}</button>
                     ))}
                   </div>

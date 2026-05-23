@@ -11,7 +11,7 @@ export function SystemSettings() {
   const [loading, setLoading] = useState(false);
   const [institution, setInstitution] = useState<any>(null);
 
-  // Live Settings State (Admin)
+  // Live Settings State (Owner)
   const [platformName, setPlatformName] = useState('LearnFlow');
   const [logoUrl, setLogoUrl] = useState('');
   const [primaryColor, setPrimaryColor] = useState('black');
@@ -33,8 +33,8 @@ export function SystemSettings() {
       const inst = await cfApi.getInstitution(institutionId);
       setInstitution(inst);
       setPlatformName(inst.name || 'LearnFlow');
-      setLogoUrl(inst.logo_url || '');
-      setPrimaryColor(inst.primary_color || 'black');
+      setLogoUrl(inst.logoUrl || inst.logo_url || '');
+      setPrimaryColor(inst.primaryColor || inst.primary_color || 'black');
     } catch (err) {
       console.error("Fetch institution failed:", err);
     } finally {
@@ -46,7 +46,7 @@ export function SystemSettings() {
     if (!institutionId) return;
     setLoading(true);
     try {
-      if (profile?.role === 'admin' || profile?.role === 'owner') {
+      if (profile?.role === 'owner') {
         await cfApi.updateInstitution(institutionId, {
           name: platformName,
           logo_url: logoUrl,
@@ -68,7 +68,7 @@ export function SystemSettings() {
     }
   };
 
-  const adminTabs = [
+  const ownerTabs = [
     { id: 'branding', label: 'Branding & Theme', icon: Palette },
     { id: 'security', label: 'Security & Privacy', icon: Shield },
     { id: 'payment', label: 'Payment Settings', icon: CreditCard },
@@ -79,7 +79,7 @@ export function SystemSettings() {
     { id: 'notifications', label: 'Notification Prefs', icon: Bell },
   ];
 
-  const tabs = (profile?.role === 'admin' || profile?.role === 'owner') ? [...personalTabs, ...adminTabs] : personalTabs;
+  const tabs = profile?.role === 'owner' ? [...personalTabs, ...ownerTabs] : personalTabs;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">

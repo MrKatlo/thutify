@@ -33,7 +33,7 @@ export function CourseList() {
   const [fee, setFee] = useState<number>(0);
   const [status, setStatus] = useState<'active' | 'draft' | 'archived'>('draft');
 
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'owner';
+  const isOwner = profile?.role === 'owner';
 
   useEffect(() => {
     fetchData();
@@ -78,13 +78,13 @@ export function CourseList() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!isAdmin || !institutionId) return;
+    if (!isOwner || !institutionId) return;
 
     try {
       const courseData = {
         title,
         description,
-        teacher_id: assignedTeacherId,
+        teacher_id: assignedTeacherId || null,
         fee: Number(fee),
         status,
       };
@@ -106,7 +106,7 @@ export function CourseList() {
     setSelectedCourse(course);
     setTitle(course.title);
     setDescription(course.description);
-    setAssignedTeacherId(course.teacher_id);
+    setAssignedTeacherId(course.teacher_id || '');
     setFee(course.fee);
     setStatus(course.status);
     setIsEditing(true);
@@ -148,7 +148,7 @@ export function CourseList() {
             {profile?.role === 'student' ? 'Your enrolled courses and academic content.' : 'Manage the institutional curriculum and assignments.'}
           </p>
         </div>
-        {isAdmin && (
+        {isOwner && (
           <Button onClick={() => { resetForm(); setShowForm(true); }} className="gap-2 bg-black text-white hover:bg-gray-800">
             <Plus className="w-4 h-4" /> Create Course
           </Button>
@@ -169,7 +169,7 @@ export function CourseList() {
               {profile?.role === 'student' ? 'No Enrolled Courses' : 'No Courses Found'}
             </h3>
             <p className="text-gray-500 max-w-xs mx-auto mt-2 italic text-sm">
-              {profile?.role === 'student' ? 'You are not currently enrolled in any courses. Please contact the administrator.' : 'Get started by creating the first institutional course.'}
+              {profile?.role === 'student' ? 'You are not currently enrolled in any courses. Please contact your institution owner or teacher.' : 'Get started by creating the first institutional course.'}
             </p>
           </div>
         ) : (
@@ -189,11 +189,13 @@ export function CourseList() {
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Instructor</span>
                     <div className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
                       <User className="w-3 h-3" />
-                      {profile?.role === 'teacher' && course.teacher_id === profile.uid ? 'You' : (teachers.find(t => t.uid === course.teacher_id)?.full_name || 'Assigned Staff')}
+                      {profile?.role === 'teacher' && course.teacher_id === profile.uid
+                        ? 'You'
+                        : (teachers.find(t => t.uid === course.teacher_id)?.full_name || 'Unassigned')}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {isAdmin && (
+                    {isOwner && (
                       <>
                         <button onClick={() => handleEdit(course)} className="p-2 text-gray-400 hover:text-black transition-colors"><Edit className="w-4 h-4" /></button>
                         <button onClick={() => handleDelete(course.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
@@ -239,10 +241,13 @@ export function CourseList() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Teacher</label>
-                    <select required value={assignedTeacherId} onChange={(e) => setAssignedTeacherId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none appearance-none">
-                      <option value="">Select Teacher</option>
+                    <select value={assignedTeacherId} onChange={(e) => setAssignedTeacherId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none appearance-none">
+                      <option value="">Assign Later</option>
                       {teachers.map(t => <option key={t.uid} value={t.uid}>{t.full_name}</option>)}
                     </select>
+                    <p className="mt-1 ml-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                      Optional. You can create the course first and assign a teacher later.
+                    </p>
                   </div>
                   <div>
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Fee ($)</label>

@@ -14,7 +14,7 @@ interface TrackerItem {
 }
 
 const initialChecklist: TrackerItem[] = [
-  { id: '1', category: 'Authentication', feature: 'Admin/Owner Shared Access', status: 'working', collection: 'users / institutionUsers', notes: 'Dashboard logic correctly shares admin view for owners.', lastTested: new Date().toLocaleDateString() },
+  { id: '1', category: 'Authentication', feature: 'Owner Access Controls', status: 'working', collection: 'users / institutionUsers', notes: 'Dashboard logic now treats the institution owner as the primary management role.', lastTested: new Date().toLocaleDateString() },
   { id: '2', category: 'Multi-Tenancy', feature: 'Students Management', status: 'working', collection: 'users / institutionUsers', notes: 'institutionId filtering & saving implemented.', lastTested: new Date().toLocaleDateString() },
   { id: '3', category: 'Multi-Tenancy', feature: 'Teachers Management', status: 'working', collection: 'users / institutionUsers', notes: 'institutionId filtering & saving implemented.', lastTested: new Date().toLocaleDateString() },
   { id: '4', category: 'Multi-Tenancy', feature: 'Courses Management', status: 'working', collection: 'courses', notes: 'institutionId filtering & saving implemented.', lastTested: new Date().toLocaleDateString() },
@@ -52,10 +52,10 @@ export function AdminCompletionTracker() {
         <div>
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-gray-900 flex items-center gap-3">
             <ShieldCheck className="w-8 h-8 text-black" />
-            Admin Panel Completion Tracker
+            Owner Workspace Completion Tracker
           </h1>
           <p className="text-gray-500 mt-1 font-medium text-sm">
-            Live checklist enforcing the Admin Features Checklist requirements.
+            Live checklist enforcing the institution owner feature requirements.
           </p>
         </div>
         

@@ -8,7 +8,6 @@ export type RouteName =
   | 'institution-login'
   | 'institution-admin'
   | 'student-signup'
-  | 'teacher-login'
   | 'not-found';
 
 export interface RouteInfo {
@@ -49,9 +48,6 @@ export function parsePath(path: string): RouteInfo {
     }
     if (subRoute === 'student-signup') {
       return { name: 'student-signup', params: { institutionSlug: slug } };
-    }
-    if (subRoute === 'teacher-login') {
-      return { name: 'teacher-login', params: { institutionSlug: slug } };
     }
   }
   

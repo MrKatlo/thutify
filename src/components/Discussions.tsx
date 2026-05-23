@@ -138,7 +138,7 @@ export function Discussions() {
               onReply={handleCreatePost}
               onDeletePost={handleDeletePost}
               currentUserId={profile?.uid || ''}
-              isTeacher={profile?.role === 'teacher' || profile?.role === 'admin' || profile?.role === 'owner'}
+              isTeacher={profile?.role === 'teacher' || profile?.role === 'owner'}
             />
           ) : (
             <DiscussionList 

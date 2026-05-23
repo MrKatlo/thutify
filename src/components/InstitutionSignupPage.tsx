@@ -63,7 +63,7 @@ export function InstitutionSignupPage() {
         if (!/\S+@\S+\.\S+/.test(ownerEmail)) return 'Please enter a valid email address';
         return '';
       case 'password':
-        if (!password) return 'Admin password is required';
+        if (!password) return 'Owner password is required';
         if (password.length < 6) return 'Password must be at least 6 characters';
         return '';
       default:
@@ -335,7 +335,7 @@ export function InstitutionSignupPage() {
             {/* Section 2: Owner Info */}
             <div className="space-y-4 pt-4 border-t border-gray-100">
               <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-1.5 w-full">
-                <Shield className="w-3.5 h-3.5 text-black" /> Owner / Administrative Account
+                <Shield className="w-3.5 h-3.5 text-black" /> Institution Owner Account
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -396,7 +396,7 @@ export function InstitutionSignupPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Create Admin Password</label>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Create Owner Password</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
                     <input

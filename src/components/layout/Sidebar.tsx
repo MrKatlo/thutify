@@ -28,7 +28,7 @@ interface MenuGroup {
 
 const MENU_DATA: MenuGroup[] = [
   {
-    id: 'dashboard', label: 'Dashboard', icon: Home, roles: ['admin', 'owner', 'teacher', 'student'],
+    id: 'dashboard', label: 'Dashboard', icon: Home, roles: ['owner', 'teacher', 'student'],
     items: [
       { id: 'dashboard/overview', label: 'Overview' },
       { id: 'dashboard/analytics', label: 'Analytics' },
@@ -37,7 +37,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'students', label: 'Students', icon: Users, roles: ['admin', 'owner', 'teacher'],
+    id: 'students', label: 'Students', icon: Users, roles: ['owner', 'admin', 'teacher'],
     items: [
       { id: 'students/all', label: 'All Students' },
       { id: 'students/add', label: 'Add Student' },
@@ -51,7 +51,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'teachers', label: 'Teachers', icon: Users, roles: ['admin', 'owner'],
+    id: 'teachers', label: 'Teachers', icon: Users, roles: ['owner', 'admin'],
     items: [
       { id: 'teachers/all', label: 'All Teachers' },
       { id: 'teachers/add', label: 'Add Teacher' },
@@ -63,7 +63,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'courses', label: 'Courses', icon: BookOpen, roles: ['admin', 'owner', 'teacher', 'student'],
+    id: 'courses', label: 'Courses', icon: BookOpen, roles: ['owner', 'teacher', 'student'],
     items: [
       { id: 'courses/all', label: 'All Courses' },
       { id: 'courses/create', label: 'Create Course' },
@@ -76,7 +76,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'content', label: 'Course Content', icon: Layers, roles: ['admin', 'owner', 'teacher'],
+    id: 'content', label: 'Course Content', icon: Layers, roles: ['owner', 'teacher'],
     items: [
       { id: 'content/syllabus', label: 'Syllabus' },
       { id: 'content/modules', label: 'Modules' },
@@ -87,7 +87,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'assignments', label: 'Assignments & Exams', icon: Edit3, roles: ['admin', 'owner', 'teacher', 'student'],
+    id: 'assignments', label: 'Assignments & Exams', icon: Edit3, roles: ['owner', 'teacher', 'student'],
     items: [
       { id: 'assignments/all', label: 'Assignments' },
       { id: 'assignments/create', label: 'Create Assignment' },
@@ -100,7 +100,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'attendance', label: 'Attendance', icon: CalendarCheck, roles: ['admin', 'owner', 'teacher'],
+    id: 'attendance', label: 'Attendance', icon: CalendarCheck, roles: ['owner', 'teacher'],
     items: [
       { id: 'attendance/dashboard', label: 'Attendance Dashboard' },
       { id: 'attendance/record', label: 'Record Attendance' },
@@ -109,7 +109,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'finance', label: 'Finance', icon: DollarSign, roles: ['admin', 'owner'],
+    id: 'finance', label: 'Finance', icon: DollarSign, roles: ['owner'],
     items: [
       { id: 'finance/payments', label: 'Payments' },
       { id: 'finance/balances', label: 'Outstanding Balances' },
@@ -126,7 +126,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'reports', label: 'Reports & Analytics', icon: BarChart2, roles: ['admin', 'owner'],
+    id: 'reports', label: 'Reports & Analytics', icon: BarChart2, roles: ['owner'],
     items: [
       { id: 'reports/student', label: 'Student Reports' },
       { id: 'reports/financial', label: 'Financial Reports' },
@@ -139,7 +139,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'communication', label: 'Communication', icon: Bell, roles: ['admin', 'owner', 'teacher'],
+    id: 'communication', label: 'Communication', icon: Bell, roles: ['owner', 'teacher'],
     items: [
       { id: 'communication/announcements', label: 'Announcements' },
       { id: 'communication/live-classes', label: 'Live Classes' },
@@ -151,7 +151,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'certificates', label: 'Certificates', icon: Award, roles: ['admin', 'owner'],
+    id: 'certificates', label: 'Certificates', icon: Award, roles: ['owner'],
     items: [
       { id: 'certificates/generate', label: 'Generate Certificates' },
       { id: 'certificates/approval', label: 'Certificate Approval' },
@@ -159,7 +159,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'users', label: 'Users & Permissions', icon: ShieldCheck, roles: ['admin', 'owner'],
+    id: 'users', label: 'Users & Permissions', icon: ShieldCheck, roles: ['owner'],
     items: [
       { id: 'users/roles', label: 'Roles' },
       { id: 'users/permissions', label: 'Permissions' },
@@ -167,7 +167,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'cms', label: 'Content Management', icon: LayoutTemplate, roles: ['admin', 'owner'],
+    id: 'cms', label: 'Content Management', icon: LayoutTemplate, roles: ['owner'],
     items: [
       { id: 'cms/pages', label: 'Pages' },
       { id: 'cms/faqs', label: 'FAQs' },
@@ -176,7 +176,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'settings', label: 'Settings', icon: Settings, roles: ['admin', 'owner'],
+    id: 'settings', label: 'Settings', icon: Settings, roles: ['owner'],
     items: [
       { id: 'settings/branding', label: 'Branding' },
       { id: 'settings/logo', label: 'Logo Upload' },
@@ -190,7 +190,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'monitoring', label: 'Monitoring', icon: Activity, roles: ['admin', 'owner'],
+    id: 'monitoring', label: 'Monitoring', icon: Activity, roles: ['owner'],
     items: [
       { id: 'monitoring/activity', label: 'Activity Logs' },
       { id: 'monitoring/login', label: 'Login History' },

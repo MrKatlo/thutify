@@ -120,7 +120,7 @@ export function ContentLibrary() {
     return matchesSearch && matchesCategory;
   });
 
-  const canManage = profile?.role === 'admin' || profile?.role === 'teacher' || profile?.role === 'owner';
+  const canManage = profile?.role === 'teacher' || profile?.role === 'owner';
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">

@@ -55,7 +55,7 @@ export function StudentManagement() {
             display_name: user?.display_name || '',
             profile_picture: user?.profile_picture,
             institution_id: institution.id,
-            status: 'active',
+            status: 'active' as const,
             enrollment_date: enrollment.enrollment_date,
             progress_percentage: enrollment.progress_percentage || 0,
           };

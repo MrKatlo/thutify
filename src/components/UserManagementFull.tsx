@@ -12,7 +12,7 @@ interface UserProfile {
   id: string;
   email: string;
   display_name: string;
-  role: 'admin' | 'owner' | 'teacher' | 'student';
+  role: 'owner' | 'teacher' | 'student';
   status: 'active' | 'suspended' | 'pending';
   institution_id: string;
   created_at: string;
@@ -25,11 +25,6 @@ interface Role {
 }
 
 const ROLES: Record<string, Role> = {
-  admin: {
-    name: 'Institution Admin',
-    permissions: ['manage-users', 'manage-courses', 'manage-content', 'view-reports', 'manage-finance', 'manage-announcements'],
-    description: 'Full control over institution settings and users'
-  },
   teacher: {
     name: 'Teacher',
     permissions: ['create-course', 'grade-assignments', 'manage-content', 'view-roster'],
@@ -42,10 +37,18 @@ const ROLES: Record<string, Role> = {
   },
   owner: {
     name: 'Institution Owner',
-    permissions: ['manage-all', 'manage-admins', 'manage-finance', 'view-all-reports', 'system-settings'],
-    description: 'Complete platform access'
+    permissions: ['manage-users', 'manage-courses', 'manage-content', 'view-reports', 'manage-finance', 'manage-announcements', 'system-settings'],
+    description: 'Full control over institution settings, staff, and learners'
   },
 };
+
+function normalizeRole(role: string): UserProfile['role'] {
+  if (role === 'teacher' || role === 'student') {
+    return role;
+  }
+
+  return 'owner';
+}
 
 export function UserManagement() {
   const { profile, institution } = useAuth();
@@ -53,7 +56,7 @@ export function UserManagement() {
   const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterRole, setFilterRole] = useState<'all' | 'admin' | 'teacher' | 'student'>('all');
+  const [filterRole, setFilterRole] = useState<'all' | 'owner' | 'teacher' | 'student'>('all');
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -64,7 +67,12 @@ export function UserManagement() {
     setLoading(true);
     try {
       const result = await readRecords('users');
-      const usersData = (result.results || []).filter((u: any) => u.institution_id === institution.id);
+      const usersData = (result.results || [])
+        .filter((u: any) => u.institution_id === institution.id)
+        .map((u: any) => ({
+          ...u,
+          role: normalizeRole(u.role),
+        }));
       
       setUsers(usersData);
       applyFilters(usersData, searchTerm, filterRole);
@@ -102,22 +110,23 @@ export function UserManagement() {
     applyFilters(users, term, filterRole);
   };
 
-  const handleFilterRole = (role: 'all' | 'admin' | 'teacher' | 'student') => {
+  const handleFilterRole = (role: 'all' | 'owner' | 'teacher' | 'student') => {
     setFilterRole(role);
     applyFilters(users, searchTerm, role);
   };
 
   const handleChangeRole = async (user: UserProfile, newRole: string) => {
     try {
-      await updateRecord('users', { role: newRole }, { id: user.id });
+      const normalizedRole = normalizeRole(newRole);
+      await updateRecord('users', { role: normalizedRole }, { id: user.id });
       
       const updated = users.map(u =>
-        u.id === user.id ? { ...u, role: newRole as any } : u
+        u.id === user.id ? { ...u, role: normalizedRole } : u
       );
       setUsers(updated);
       applyFilters(updated, searchTerm, filterRole);
       setSelectedUser(null);
-      showToast(`User role changed to ${newRole}!`, 'success');
+      showToast(`User role changed to ${normalizedRole}!`, 'success');
     } catch (err) {
       console.error('Error updating role:', err);
       showToast('Failed to update role', 'error');
@@ -147,7 +156,7 @@ export function UserManagement() {
 
   const stats = {
     total: users.length,
-    admins: users.filter(u => u.role === 'admin').length,
+    owners: users.filter(u => u.role === 'owner').length,
     teachers: users.filter(u => u.role === 'teacher').length,
     students: users.filter(u => u.role === 'student').length,
   };
@@ -196,7 +205,7 @@ export function UserManagement() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-purple-700 uppercase">Admins</p>
-              <h3 className="text-2xl font-bold text-purple-900 mt-1">{stats.admins}</h3>
+              <h3 className="text-2xl font-bold text-purple-900 mt-1">{stats.owners}</h3>
             </div>
             <div className="w-10 h-10 bg-purple-200 text-purple-700 rounded-lg flex items-center justify-center">
               <Shield className="w-5 h-5" />
@@ -243,7 +252,7 @@ export function UserManagement() {
         </div>
 
         <div className="flex gap-2">
-          {(['all', 'admin', 'teacher', 'student'] as const).map(role => (
+          {(['all', 'owner', 'teacher', 'student'] as const).map(role => (
             <button
               key={role}
               onClick={() => handleFilterRole(role)}
@@ -392,10 +401,10 @@ export function UserManagement() {
                 <div>
                   <label className="text-xs font-semibold text-gray-600 uppercase mb-2 block">Change Role To:</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {Object.keys(ROLES).map(role => (
-                      <button
-                        key={role}
-                        onClick={() => handleChangeRole(selectedUser, role)}
+                        {Object.keys(ROLES).map(role => (
+                          <button
+                            key={role}
+                            onClick={() => handleChangeRole(selectedUser, role)}
                         disabled={selectedUser.role === role}
                         className={`px-3 py-2 rounded-lg font-medium text-xs transition-all ${
                           selectedUser.role === role

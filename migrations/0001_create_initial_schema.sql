@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT UNIQUE NOT NULL,
   display_name TEXT NOT NULL,
   profile_picture TEXT,
-  role TEXT DEFAULT 'student', -- 'student', 'teacher', 'admin'
+  role TEXT DEFAULT 'student', -- 'student', 'teacher', 'owner' (institution founders are treated as owners)
   status TEXT DEFAULT 'active',  -- 'active', 'suspended', 'inactive'
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

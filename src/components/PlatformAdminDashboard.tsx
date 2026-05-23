@@ -10,7 +10,7 @@ import { format } from 'date-fns';
 import * as cfApi from '../services/cfApi';
 
 export function PlatformAdminDashboard() {
-  const { profile, isPlatformAdmin, loading: authLoading } = useAuth();
+  const { profile, isOwner, loading: authLoading } = useAuth();
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,10 +24,10 @@ export function PlatformAdminDashboard() {
   };
 
   useEffect(() => {
-    if (isPlatformAdmin) {
+    if (isOwner) {
       fetchInstitutions();
     }
-  }, [isPlatformAdmin]);
+  }, [isOwner]);
 
   const fetchInstitutions = async () => {
     setLoading(true);
@@ -85,7 +85,7 @@ export function PlatformAdminDashboard() {
   }
 
   // Security Access Guard
-  if (!isPlatformAdmin) {
+  if (!isOwner) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fbfbfa] p-6 text-center">
         <div className="max-w-md">

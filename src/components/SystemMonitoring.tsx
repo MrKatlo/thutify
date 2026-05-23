@@ -91,7 +91,7 @@ export function SystemMonitoring() {
       <Card title="System Logs" className="mt-6">
         <div className="space-y-3 mt-4">
           {[
-            { level: 'info', msg: 'Admin user logged in via IP 192.168.1.5', time: 'Just now' },
+            { level: 'info', msg: 'Owner user logged in via IP 192.168.1.5', time: 'Just now' },
             { level: 'warning', msg: 'Database connection latency spike (120ms)', time: '5 mins ago' },
             { level: 'info', msg: 'Automated backup completed successfully', time: '1 hour ago' },
             { level: 'error', msg: 'Failed login attempt (Invalid credentials)', time: '2 hours ago' },

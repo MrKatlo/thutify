@@ -4,6 +4,7 @@ import { Card, Button } from './ui/Card';
 import { DollarSign, Search, Plus, CheckCircle2, AlertCircle, X, Printer, Trash2, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as cfApi from '../services/cfApi';
+import type { PaymentInput } from '../types';
 
 // Sub-components
 import { PaymentList } from './finance/PaymentList';
@@ -11,7 +12,7 @@ import { InvoiceList } from './finance/InvoiceList';
 import { RefundList } from './finance/RefundList';
 
 export function Financials() {
-  const { profile, institutionId } = useAuth();
+  const { profile, isOwner, institutionId } = useAuth();
   const [activeTab, setActiveTab] = useState<'payments' | 'invoices' | 'refunds'>('payments');
   
   // Data States
@@ -75,14 +76,14 @@ export function Financials() {
     e.preventDefault();
     if (!institutionId) return;
     try {
-      const payload = {
+      const payload: PaymentInput = {
         student_id: formData.studentId,
         course_id: formData.courseId,
         amount_paid: Number(formData.amountPaid),
         total_fee: Number(formData.totalFee),
         payment_method: formData.method,
         reference_number: formData.reference,
-        status: Number(formData.amountPaid) >= Number(formData.totalFee) ? 'paid' : 'partial'
+        status: Number(formData.amountPaid) >= Number(formData.totalFee) ? 'paid' : 'partial',
       };
 
       if (isEditing && selectedPayment) {
@@ -200,7 +201,7 @@ export function Financials() {
 
       {activeTab === 'payments' && <PaymentList payments={payments} loading={loading} onEdit={() => {}} onDelete={() => {}} onReceipt={handleReceipt} />}
       {activeTab === 'invoices' && <InvoiceList invoices={invoices} loading={loading} onDownload={() => {}} />}
-      {activeTab === 'refunds' && <RefundList refunds={refunds} loading={loading} onApprove={() => {}} onReject={() => {}} isAdmin={true} />}
+      {activeTab === 'refunds' && <RefundList refunds={refunds} loading={loading} onApprove={() => {}} onReject={() => {}} isOwner={isOwner} />}
 
       <AnimatePresence>
         {showForm && (

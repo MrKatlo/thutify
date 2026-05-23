@@ -61,13 +61,19 @@ export function InstitutionLoginPage({ institution }: InstitutionLoginPageProps)
       }
 
       if (membership.status === 'suspended') {
-        showToast("Your institutional access has been suspended. Contact administrator.", "error");
+        showToast("Your institutional access has been suspended. Contact your institution owner.", "error");
         auth.signOut();
         setLoading(false);
         return;
       }
       if (membership.status === 'pending') {
-        showToast("Your membership is pending approval from the administrator.", "error");
+        showToast("Your membership is pending approval from the institution owner.", "error");
+        auth.signOut();
+        setLoading(false);
+        return;
+      }
+      if (membership.status === 'rejected') {
+        showToast("Your application was rejected. Please contact the institution if you want to reapply.", "error");
         auth.signOut();
         setLoading(false);
         return;
@@ -75,7 +81,7 @@ export function InstitutionLoginPage({ institution }: InstitutionLoginPageProps)
 
       showToast("Access granted! Entering portal...", "success");
 
-      // Successful login - redirect to admin page or dashboard
+      // Successful login - redirect to the institution workspace
       setTimeout(() => {
         navigate(`/${institution.slug}/admin`);
       }, 1000);
