@@ -5,14 +5,19 @@ import { Folder, FileText, Download, Plus, Search, Film, Eye, Loader2, X, Trash2
 import { motion, AnimatePresence } from 'motion/react';
 import * as cfApi from '../services/cfApi';
 
-export function ContentLibrary() {
+interface ContentLibraryProps {
+  initialCategory?: string;
+  autoOpenUpload?: boolean;
+}
+
+export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload = false }: ContentLibraryProps) {
   const { profile, institutionId } = useAuth();
   
   // States
   const [loading, setLoading] = useState(true);
   const [materials, setMaterials] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState('All Files');
+  const [activeCategory, setActiveCategory] = useState(initialCategory);
 
   // Upload States
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -22,8 +27,18 @@ export function ContentLibrary() {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
+    setActiveCategory(initialCategory);
+  }, [initialCategory]);
+
+  useEffect(() => {
     fetchMaterials();
   }, [institutionId]);
+
+  useEffect(() => {
+    if (autoOpenUpload) {
+      setShowUploadModal(true);
+    }
+  }, [autoOpenUpload]);
 
   const fetchMaterials = async () => {
     if (!institutionId) return;
