@@ -5,6 +5,7 @@ import * as cfApi from '../services/cfApi';
 import { BookOpen, Mail, Lock, ShieldCheck, Loader2, AlertCircle, Check, ArrowLeft } from 'lucide-react';
 import { Button, Card } from './ui/Card';
 import { navigate } from '../hooks/useRouter';
+import { setActiveInstitutionId } from '../hooks/useAuth';
 import { motion, AnimatePresence } from 'motion/react';
 import { Institution } from '../types';
 
@@ -79,6 +80,7 @@ export function InstitutionLoginPage({ institution }: InstitutionLoginPageProps)
         return;
       }
 
+      setActiveInstitutionId(institution.id);
       showToast("Access granted! Entering portal...", "success");
 
       // Successful login - redirect to the institution workspace
