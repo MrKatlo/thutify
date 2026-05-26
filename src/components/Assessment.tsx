@@ -15,9 +15,18 @@ import { QuizBuilder } from './quizzes/QuizBuilder';
 import { QuizAttempt } from './quizzes/QuizAttempt';
 import { QuizResults } from './quizzes/QuizResults';
 
-export function Assessment() {
+interface AssessmentProps {
+  initialMode?: string;
+}
+
+export function Assessment({ initialMode }: AssessmentProps) {
   const { profile, institutionId } = useAuth();
-  const [activeSubTab, setActiveSubTab] = useState<'assignments' | 'submissions' | 'quizzes'>('assignments');
+  const [activeSubTab, setActiveSubTab] = useState<'assignments' | 'submissions' | 'quizzes'>(() => {
+    if (!initialMode) return 'assignments';
+    if (initialMode.endsWith('/quizzes') || initialMode.endsWith('/exams') || initialMode.endsWith('/auto-grading')) return 'quizzes';
+    if (initialMode.endsWith('/submissions') || initialMode.endsWith('/manual-grading') || initialMode.endsWith('/results')) return 'submissions';
+    return 'assignments';
+  });
   const [loading, setLoading] = useState(true);
 
   // Lists
@@ -68,6 +77,19 @@ export function Assessment() {
   useEffect(() => {
     fetchData();
   }, [profile, institutionId]);
+
+  useEffect(() => {
+    if (initialMode?.endsWith('/create')) {
+      setActiveSubTab('assignments');
+      setShowAssignForm(true);
+    }
+    if (initialMode?.endsWith('/manual-grading') || initialMode?.endsWith('/results')) {
+      setActiveSubTab('submissions');
+    }
+    if (initialMode?.endsWith('/quizzes') || initialMode?.endsWith('/exams') || initialMode?.endsWith('/auto-grading')) {
+      setActiveSubTab('quizzes');
+    }
+  }, [initialMode]);
 
   const fetchData = async () => {
     if (!profile || !institutionId) return;
@@ -255,6 +277,13 @@ export function Assessment() {
       </div>
     );
   }
+
+  useEffect(() => {
+    if (initialMode?.endsWith('/create')) {
+      setShowAssignForm(true);
+      setActiveSubTab('assignments');
+    }
+  }, [initialMode]);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">

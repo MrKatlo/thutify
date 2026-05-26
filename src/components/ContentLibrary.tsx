@@ -25,6 +25,7 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
   const [uploadCategory, setUploadCategory] = useState('Syllabi & PDFs');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [previewAsset, setPreviewAsset] = useState<any | null>(null);
 
   useEffect(() => {
     setActiveCategory(initialCategory);
@@ -100,12 +101,16 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
     }
   };
 
-  const handleDownloadClick = async (file: any) => {
-    if (!institutionId) return;
+  const handleOpenAsset = async (file: any) => {
+    if (!institutionId || !file) return;
     try {
       await cfApi.incrementMaterialDownloads(institutionId, file.id);
     } catch (err) {
-      console.warn("Could not increment downloads:", err);
+      console.warn('Could not increment downloads:', err);
+    }
+    if (file.type === 'Video') {
+      setPreviewAsset(file);
+      return;
     }
     window.open(file.download_url || file.downloadUrl, '_blank');
   };
@@ -129,6 +134,22 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
     { label: 'Assignments sheets', count: materials.filter(m => m.category === 'Assignments sheets').length },
   ];
 
+  const title = activeCategory === 'Lecture Videos'
+    ? 'Video Lessons'
+    : activeCategory === 'Syllabi & PDFs'
+      ? 'Documents & Resources'
+      : activeCategory === 'Assignments sheets'
+        ? 'Assignment Materials'
+        : 'Content Library';
+
+  const description = activeCategory === 'Lecture Videos'
+    ? 'Manage video lessons stored in your institution bucket.'
+    : activeCategory === 'Syllabi & PDFs'
+      ? 'Upload and share PDF syllabi, notes, and guides with your students.'
+      : activeCategory === 'Assignments sheets'
+        ? 'Distribute worksheets, assignments, and practice files.'
+        : 'Store course assets in the shared institutional repository.';
+
   const filteredMaterials = materials.filter(m => {
     const matchesSearch = m.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = activeCategory === 'All Files' || m.category === activeCategory;
@@ -141,8 +162,8 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Content Library</h1>
-          <p className="text-gray-500 mt-1 font-medium text-sm">Centralized repository for teaching aids and curriculum assets.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">{title}</h1>
+          <p className="text-gray-500 mt-1 font-medium text-sm">{description}</p>
         </div>
         {canManage && (
           <Button onClick={() => setShowUploadModal(true)} className="bg-black text-white hover:bg-gray-800">
@@ -216,10 +237,10 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <button 
-                        onClick={() => handleDownloadClick(file)}
+                        onClick={() => handleOpenAsset(file)}
                         className="p-2 text-gray-400 hover:text-black hover:bg-white rounded-lg transition-all"
                       >
-                        <Download className="w-4 h-4" />
+                        <Eye className="w-4 h-4" />
                       </button>
                       {canManage && (
                         <button 
@@ -286,6 +307,26 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
                    <Button variant="outline" onClick={() => setShowUploadModal(false)} className="flex-1">Cancel</Button>
                    <Button onClick={handleUploadSubmit} disabled={!selectedFile || uploading} className="flex-[2] bg-black text-white">Upload to Cloud</Button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {previewAsset && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div onClick={() => setPreviewAsset(null)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative w-full max-w-3xl bg-white rounded-3xl p-6 shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-xl font-black text-gray-900">Preview video</h3>
+                  <p className="text-sm text-gray-500">{previewAsset.name}</p>
+                </div>
+                <button onClick={() => setPreviewAsset(null)} className="text-lg">✕</button>
+              </div>
+              <div className="rounded-3xl overflow-hidden bg-black">
+                <video controls className="w-full h-full bg-black">
+                  <source src={previewAsset.download_url || previewAsset.downloadUrl} type={previewAsset.contentType || 'video/mp4'} />
+                  Your browser does not support the video tag.
+                </video>
               </div>
             </motion.div>
           </div>
