@@ -18,8 +18,11 @@ import { Discussions } from './components/Discussions';
 import { Messaging } from './components/Messaging';
 import { Certificates } from './components/Certificates';
 import { ContentLibrary } from './components/ContentLibrary';
+import { ContentManagement } from './components/ContentManagement';
 import { CourseSyllabus } from './components/courses/CourseSyllabus';
 import { ScheduleCalendar } from './components/ScheduleCalendar';
+import { SystemSettings } from './components/SystemSettings';
+import { SystemMonitoring } from './components/SystemMonitoring';
 import { PlaceholderView } from './components/PlaceholderView';
 import { motion, AnimatePresence } from 'motion/react';
 import { Menu, AlertCircle, LogOut, BookOpen, Search } from 'lucide-react';
@@ -322,7 +325,7 @@ export default function App() {
                       if (activeTab.startsWith('students/')) return (isOwner || isAdmin || isTeacher) ? <StudentManagement activeTab={activeTab} /> : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab.startsWith('teachers/')) return (isOwner || isAdmin) ? <TeacherManagement activeTab={activeTab} /> : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab === 'users/roles' || activeTab === 'users/permissions') return isOwner ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'courses/all') return <CourseList />;
+                      if (activeTab.startsWith('courses/')) return <CourseList />;
                       if (activeTab === 'content/syllabus') return <CourseSyllabus />;
                       if (activeTab === 'content/modules') return (isOwner || isTeacher) ? <ModuleManagement /> : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab === 'content/lessons') return (isOwner || isTeacher) ? <LessonManagement /> : <Dashboard setActiveTab={setActiveTab} />;
@@ -332,12 +335,17 @@ export default function App() {
                       if (activeTab === 'assignments/scheduling') return <ScheduleCalendar />;
                       if (activeTab.startsWith('assignments/')) return <Assessment initialMode={activeTab} />;
                       if (activeTab.startsWith('attendance/')) return (isOwner || isTeacher) ? <Attendance /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'finance/payments') return isOwner ? <Financials /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('finance/')) return isOwner ? <Financials /> : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab.startsWith('reports/')) return <Reports />;
                       if (activeTab === 'communication/announcements') return <Announcements />;
                       if (activeTab === 'communication/live-classes') return <LiveClasses />;
                       if (activeTab === 'communication/discussions') return <Discussions />;
-                      if (activeTab === 'certificates/all') return <Certificates />;
+                      if (activeTab === 'communication/chat' || activeTab === 'communication/email' || activeTab === 'communication/sms' || activeTab === 'communication/in-app') return <Messaging />;
+                      if (activeTab.startsWith('settings/')) return <SystemSettings initialActiveTab={activeTab.replace('settings/', '')} />;
+                      if (activeTab.startsWith('certificates/')) return <Certificates />;
+                      if (activeTab.startsWith('cms/')) return isOwner ? <ContentManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('monitoring/')) return isOwner ? <SystemMonitoring /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('users/')) return isOwner ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
                       
                       // Fallback for all other sidebar routes
                       return <PlaceholderView routeId={activeTab} />;
