@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Card, Button } from './ui/Card';
-import { BookOpen, Users, Calendar, TrendingUp, Plus, DollarSign, CheckCircle, Clock, Video, Bell, PenTool, Award, Play } from 'lucide-react';
+import { BookOpen, Users, Calendar, TrendingUp, Plus, DollarSign, CheckCircle, Clock, Video, Bell, PenTool, Award, Play, Layers, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as cfApi from '../services/cfApi';
 
