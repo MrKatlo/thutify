@@ -1030,6 +1030,23 @@ export async function uploadFile(file: File, key?: string, token?: string): Prom
   });
 }
 
+export async function fetchStorageObject(key: string): Promise<Blob> {
+  const token = await getAuthToken();
+  const response = await fetch(buildUrl('/storage/object', { key }), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `HTTP ${response.status}`);
+  }
+
+  return response.blob();
+}
+
 export async function uploadSlide(file: File) {
   return apiRequest<{ key: string; url: string }>('POST', '/uploads/slide', {
     body: (() => {

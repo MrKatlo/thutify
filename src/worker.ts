@@ -2171,6 +2171,13 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   app.get('/api/storage/object', async (context) => {
+    const header = context.req.header('Authorization') || '';
+    const match = /^Bearer\s+(.+)$/.exec(header);
+    if (!match) return context.json({ error: 'Missing bearer token' }, 401);
+
+    const verified = await verifyToken(match[1], context.env);
+    if (!verified) return context.json({ error: 'Invalid or expired token' }, 401);
+
     const key = context.req.query('key');
     if (!key) return context.json({ error: 'Missing storage key' }, 400);
     const object = await context.env.BUCKET.get(key);

@@ -26,10 +26,19 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [previewAsset, setPreviewAsset] = useState<any | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     setActiveCategory(initialCategory);
   }, [initialCategory]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   useEffect(() => {
     fetchMaterials();
@@ -109,11 +118,36 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
     } catch (err) {
       console.warn('Could not increment downloads:', err);
     }
-    if (file.type === 'Video') {
-      setPreviewAsset(file);
-      return;
+
+    const downloadUrl = file.download_url || file.downloadUrl;
+    const isProtected = downloadUrl?.includes('/api/storage/object');
+    if (isProtected) {
+      try {
+        const url = new URL(downloadUrl, window.location.origin);
+        const key = url.searchParams.get('key');
+        if (!key) throw new Error('Missing storage key');
+
+        const blob = await cfApi.fetchStorageObject(key);
+        if (file.type === 'Video') {
+          if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+          }
+          const objectUrl = URL.createObjectURL(blob);
+          setPreviewUrl(objectUrl);
+          setPreviewAsset(file);
+          return;
+        }
+
+        const objectUrl = URL.createObjectURL(blob);
+        window.open(objectUrl, '_blank');
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+        return;
+      } catch (err) {
+        console.error('Protected asset fetch failed:', err);
+      }
     }
-    window.open(file.download_url || file.downloadUrl, '_blank');
+
+    window.open(downloadUrl, '_blank');
   };
 
   const handleDeleteFile = async (fileId: string) => {
@@ -314,18 +348,18 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
         )}
         {previewAsset && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div onClick={() => setPreviewAsset(null)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+            <div onClick={() => { setPreviewAsset(null); setPreviewUrl(null); }} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative w-full max-w-3xl bg-white rounded-3xl p-6 shadow-2xl overflow-hidden">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-xl font-black text-gray-900">Preview video</h3>
                   <p className="text-sm text-gray-500">{previewAsset.name}</p>
                 </div>
-                <button onClick={() => setPreviewAsset(null)} className="text-lg">✕</button>
+                <button onClick={() => { setPreviewAsset(null); setPreviewUrl(null); }} className="text-lg">✕</button>
               </div>
               <div className="rounded-3xl overflow-hidden bg-black">
                 <video controls className="w-full h-full bg-black">
-                  <source src={previewAsset.download_url || previewAsset.downloadUrl} type={previewAsset.contentType || 'video/mp4'} />
+                  <source src={previewUrl || previewAsset.download_url || previewAsset.downloadUrl} type={previewAsset.contentType || 'video/mp4'} />
                   Your browser does not support the video tag.
                 </video>
               </div>
