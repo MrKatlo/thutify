@@ -5750,7 +5750,7 @@ export function createApp(options: CreateAppOptions = {}) {
     const body = await parseRequestBody<Row>(context.req.raw);
     const materialId = newId();
     const fileType = normalizeFileType(body.type || body.file_type);
-    const fileSize = typeof body.file_size === 'number' ? body.file_size : null;
+    const fileSize = typeof body.file_size === 'number' ? body.file_size : Number(body.file_size) || null;
     await dbRun(
       context.env.DB,
       `INSERT INTO content_library

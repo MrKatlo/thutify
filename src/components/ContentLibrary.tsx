@@ -83,9 +83,10 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
         name: selectedFile.name,
         type: selectedFile.type.includes('video') ? 'Video' : selectedFile.type.includes('pdf') ? 'PDF' : 'Document',
         size: formatFileSize(selectedFile.size),
+        file_size: selectedFile.size,
         category: uploadCategory,
+        r2_key: uploadRes.key,
         download_url: uploadRes.url,
-        uploaded_by: profile.uid
       });
 
       setUploadProgress(100);

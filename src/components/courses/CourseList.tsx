@@ -67,7 +67,7 @@ export function CourseList({ activeTab }: CourseListProps) {
         const enrolledIds = enrollments.map((e: any) => e.course_id);
         setCourses(fetchedCourses.filter((c: any) => enrolledIds.includes(c.id)));
       } else if (profile?.role === 'teacher') {
-        setCourses(fetchedCourses.filter((c: any) => c.teacher_id === profile.uid));
+        setCourses(fetchedCourses.filter((c: any) => c.teacher_id === profile.uid || c.author_id === profile.uid));
       } else {
         setCourses(fetchedCourses);
       }

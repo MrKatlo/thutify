@@ -68,7 +68,7 @@ export function CourseSyllabus() {
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-black" />
           </div>
-        ) : courses.length === 0 ? (
+        ) : visibleCourses.length === 0 ? (
           <div className="text-center py-16">
             <Layers className="mx-auto mb-4 w-12 h-12 text-gray-300" />
             <p className="text-sm font-bold text-gray-900">No course syllabus available yet.</p>
@@ -76,7 +76,7 @@ export function CourseSyllabus() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {courses.map((course) => (
+            {visibleCourses.map((course) => (
               <div key={course.id} className="border border-gray-100 rounded-3xl p-6 bg-white shadow-sm hover:shadow-lg transition-all">
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 rounded-3xl bg-black text-white flex items-center justify-center text-lg font-black">

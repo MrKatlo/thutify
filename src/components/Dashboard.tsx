@@ -197,6 +197,13 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
     ? getTeacherStatsList()
     : getStudentStatsList();
 
+  const contentActions = [
+    { label: 'Syllabus', icon: BookOpen, tab: 'content/syllabus' },
+    { label: 'Modules', icon: Layers, tab: 'content/modules' },
+    { label: 'Lessons', icon: FileText, tab: 'content/lessons' },
+    { label: 'Upload Materials', icon: Plus, tab: 'content/upload' },
+  ];
+
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
@@ -230,6 +237,26 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
           </motion.div>
         ))}
       </div>
+
+      {(profile?.role === 'teacher' || isOwner) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-10">
+          {contentActions.map((item) => (
+            <button
+              key={item.label}
+              onClick={() => setActiveTab(item.tab)}
+              className="flex items-center gap-3 p-5 bg-white border border-gray-200 rounded-3xl hover:border-black hover:shadow-lg transition-all text-left"
+            >
+              <div className="w-12 h-12 rounded-3xl bg-black text-white flex items-center justify-center">
+                <item.icon className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">{item.label}</p>
+                <p className="text-xs text-gray-400 uppercase tracking-widest">Course content</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
