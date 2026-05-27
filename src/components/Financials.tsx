@@ -11,9 +11,13 @@ import { PaymentList } from './finance/PaymentList';
 import { InvoiceList } from './finance/InvoiceList';
 import { RefundList } from './finance/RefundList';
 
-export function Financials() {
+interface FinancialsProps {
+  initialTab?: 'payments' | 'invoices' | 'refunds';
+}
+
+export function Financials({ initialTab = 'payments' }: FinancialsProps) {
   const { profile, isOwner, institutionId } = useAuth();
-  const [activeTab, setActiveTab] = useState<'payments' | 'invoices' | 'refunds'>('payments');
+  const [activeTab, setActiveTab] = useState<'payments' | 'invoices' | 'refunds'>(initialTab);
   
   // Data States
   const [payments, setPayments] = useState<any[]>([]);
@@ -39,6 +43,10 @@ export function Financials() {
     method: 'Transfer',
     reference: ''
   });
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     fetchData();

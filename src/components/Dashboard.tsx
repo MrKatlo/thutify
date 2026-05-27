@@ -171,8 +171,8 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
   ];
 
   const getOwnerStatsList = () => [
-    { label: 'Total Students', value: stats.studentsCount.toString(), icon: Users, color: 'bg-blue-50 text-blue-600', tab: 'students' },
-    { label: 'Total Teachers', value: stats.teachersCount.toString(), icon: BookOpen, color: 'bg-green-50 text-green-600', tab: 'teachers' },
+    { label: 'Total Students', value: stats.studentsCount.toString(), icon: Users, color: 'bg-blue-50 text-blue-600', tab: 'students/all' },
+    { label: 'Total Teachers', value: stats.teachersCount.toString(), icon: BookOpen, color: 'bg-green-50 text-green-600', tab: 'teachers/all' },
     { label: 'Total Courses', value: stats.coursesCount.toString(), icon: Calendar, color: 'bg-orange-50 text-orange-600', tab: 'courses' },
     { label: 'Payments Received', value: `$${stats.totalRevenue.toLocaleString()}`, icon: DollarSign, color: 'bg-purple-50 text-purple-600', tab: 'financials' },
   ];
@@ -180,7 +180,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
   const getTeacherStatsList = () => [
     { label: 'My Courses', value: teacherStats.coursesCount.toString(), icon: BookOpen, color: 'bg-blue-50 text-blue-600', tab: 'courses' },
     { label: 'My Students', value: teacherStats.studentsCount.toString(), icon: Users, color: 'bg-green-50 text-green-600', tab: 'students' },
-    { label: 'Total Lessons', value: teacherStats.lessonsCount.toString(), icon: Calendar, color: 'bg-purple-50 text-purple-600', tab: 'calendar' },
+    { label: 'Total Lessons', value: teacherStats.lessonsCount.toString(), icon: Calendar, color: 'bg-purple-50 text-purple-600', tab: 'assignments/scheduling' },
     { label: 'Avg. Progress', value: `${teacherStats.avgProgress}%`, icon: TrendingUp, color: 'bg-orange-50 text-orange-600', tab: 'reports' },
   ];
 
@@ -188,7 +188,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
     { label: 'Enrolled Courses', value: studentStats.enrolledCount.toString(), icon: BookOpen, color: 'bg-blue-50 text-blue-600', tab: 'courses' },
     { label: 'Completed Lessons', value: studentStats.completedCount.toString(), icon: CheckCircle, color: 'bg-green-50 text-green-600', tab: 'courses' },
     { label: 'Attendance Rate', value: `${studentStats.attendanceRate}%`, icon: Calendar, color: 'bg-purple-50 text-purple-600', tab: 'attendance' },
-    { label: 'Payment Balance', value: `$${studentStats.balance.toLocaleString()}`, icon: DollarSign, color: studentStats.balance > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600', tab: 'financials' },
+    { label: 'Payment Balance', value: `$${studentStats.balance.toLocaleString()}`, icon: DollarSign, color: studentStats.balance > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600', tab: 'dashboard/overview' },
   ];
 
   const statsList = isOwner
@@ -255,7 +255,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                         </div>
                       </div>
                       <Button 
-                        onClick={() => setActiveTab('courses')}
+                        onClick={() => setActiveTab('courses/all')}
                         className="bg-black text-white px-4 py-2 text-xs font-bold flex items-center justify-center gap-2"
                       >
                         <Play className="w-3.5 h-3.5 fill-current" /> Resume
@@ -290,7 +290,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                         </div>
                       </div>
                       <button 
-                        onClick={() => setActiveTab('assessment')}
+                        onClick={() => setActiveTab('assignments/submissions')}
                         className="text-[10px] font-bold text-gray-400 hover:text-black uppercase tracking-widest px-4 py-2 border border-gray-200 rounded-xl bg-white w-full sm:w-auto text-center"
                       >
                         Submit
@@ -312,7 +312,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                       </div>
                     </div>
                     <button 
-                      onClick={() => setActiveTab(act.type === 'payment' ? 'financials' : 'students')}
+                      onClick={() => setActiveTab(act.type === 'payment' ? 'finance/payments' : 'students/all')}
                       className="text-[10px] font-bold text-gray-400 hover:text-black uppercase tracking-widest px-4 py-2 border border-gray-200 rounded-xl bg-white w-full sm:w-auto text-center"
                     >
                       View
@@ -395,7 +395,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                      </div>
                    ))}
                    <button 
-                     onClick={() => setActiveTab('financials')}
+                     onClick={() => setActiveTab('finance/payments')}
                      className="w-full mt-6 py-2.5 text-xs font-bold text-gray-400 hover:text-black uppercase tracking-widest border border-dashed border-gray-200 rounded-xl transition-all"
                    >
                      View All Financials
@@ -427,7 +427,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                      );
                    })}
                    <button 
-                     onClick={() => setActiveTab('courses')}
+                     onClick={() => setActiveTab('courses/all')}
                      className="w-full mt-6 py-2.5 text-xs font-bold text-gray-400 hover:text-black uppercase tracking-widest border border-dashed border-gray-200 rounded-xl transition-all"
                    >
                      View Full Syllabus

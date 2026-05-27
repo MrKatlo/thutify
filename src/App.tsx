@@ -322,10 +322,15 @@ export default function App() {
                   >
                     {(() => {
                       if (activeTab.startsWith('dashboard')) return <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab.startsWith('students/')) return (isOwner || isAdmin || isTeacher) ? <StudentManagement activeTab={activeTab} /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab.startsWith('teachers/')) return (isOwner || isAdmin) ? <TeacherManagement activeTab={activeTab} /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'students' || activeTab.startsWith('students/')) return (isOwner || isAdmin || isTeacher) ? (
+                        <StudentManagement activeTab={activeTab === 'students' ? 'students/all' : activeTab} />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'teachers' || activeTab.startsWith('teachers/')) return (isOwner || isAdmin) ? (
+                        <TeacherManagement activeTab={activeTab === 'teachers' ? 'teachers/all' : activeTab} />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab === 'users/roles' || activeTab === 'users/permissions') return isOwner ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab.startsWith('courses/')) return <CourseList />;
+                      if (activeTab === 'courses' || activeTab.startsWith('courses/')) return <CourseList activeTab={activeTab} />;
+                      if (activeTab === 'assessment' || activeTab.startsWith('assignments/')) return <Assessment initialMode={activeTab === 'assessment' ? 'assignments/all' : activeTab} />;
                       if (activeTab === 'content/syllabus') return <CourseSyllabus />;
                       if (activeTab === 'content/modules') return (isOwner || isTeacher) ? <ModuleManagement /> : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab === 'content/lessons') return (isOwner || isTeacher) ? <LessonManagement /> : <Dashboard setActiveTab={setActiveTab} />;
@@ -333,9 +338,14 @@ export default function App() {
                       if (activeTab === 'content/resources') return <ContentLibrary initialCategory="Syllabi & PDFs" />;
                       if (activeTab === 'content/upload') return <ContentLibrary initialCategory="Syllabi & PDFs" autoOpenUpload />;
                       if (activeTab === 'assignments/scheduling') return <ScheduleCalendar />;
-                      if (activeTab.startsWith('assignments/')) return <Assessment initialMode={activeTab} />;
                       if (activeTab.startsWith('attendance/')) return (isOwner || isTeacher) ? <Attendance /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab.startsWith('finance/')) return isOwner ? <Financials /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'financials' || activeTab.startsWith('finance/')) {
+                        const financeMode = activeTab === 'financials'
+                          ? 'payments'
+                          : activeTab.replace('finance/', '') as 'payments' | 'invoices' | 'refunds';
+                        const initialFinanceTab = ['payments', 'invoices', 'refunds'].includes(financeMode) ? financeMode : 'payments';
+                        return isOwner ? <Financials initialTab={initialFinanceTab} /> : <Dashboard setActiveTab={setActiveTab} />;
+                      }
                       if (activeTab.startsWith('reports/')) return <Reports />;
                       if (activeTab === 'communication/announcements') return <Announcements />;
                       if (activeTab === 'communication/live-classes') return <LiveClasses />;

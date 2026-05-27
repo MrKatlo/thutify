@@ -16,7 +16,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { CourseDetail } from './CourseDetail';
 import * as cfApi from '../../services/cfApi';
 
-export function CourseList() {
+interface CourseListProps {
+  activeTab?: string;
+}
+
+export function CourseList({ activeTab }: CourseListProps) {
   const { profile, institutionId } = useAuth();
   const [courses, setCourses] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
@@ -25,6 +29,14 @@ export function CourseList() {
   const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
   const [viewingCourse, setViewingCourse] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+
+  const filteredCourses = useMemo(() => {
+    if (!activeTab) return courses;
+    if (activeTab === 'courses/published') return courses.filter((c: any) => c.status === 'active');
+    if (activeTab === 'courses/drafts') return courses.filter((c: any) => c.status === 'draft');
+    if (activeTab === 'courses/archived') return courses.filter((c: any) => c.status === 'archived');
+    return courses;
+  }, [courses, activeTab]);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -75,6 +87,13 @@ export function CourseList() {
     setIsEditing(false);
     setSelectedCourse(null);
   };
+
+  useEffect(() => {
+    if (activeTab === 'courses/create') {
+      resetForm();
+      setShowForm(true);
+    }
+  }, [activeTab]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -160,7 +179,7 @@ export function CourseList() {
           [1, 2, 3].map(i => (
             <div key={i} className="h-64 bg-gray-100 rounded-2xl animate-pulse" />
           ))
-        ) : courses.length === 0 ? (
+        ) : filteredCourses.length === 0 ? (
           <div className="col-span-full py-20 text-center bg-white border border-dashed border-gray-200 rounded-3xl">
             <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <BookOpen className="w-10 h-10 text-gray-300" />
@@ -173,7 +192,7 @@ export function CourseList() {
             </p>
           </div>
         ) : (
-          courses.map((course) => (
+          filteredCourses.map((course) => (
             <motion.div key={course.id} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}>
               <Card className="h-full flex flex-col group relative overflow-hidden hover:shadow-xl hover:border-black/5 transition-all">
                 <div className="mb-4">
