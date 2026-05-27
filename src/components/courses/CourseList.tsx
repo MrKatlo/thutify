@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { Card, Button } from '../ui/Card';
 import { 
