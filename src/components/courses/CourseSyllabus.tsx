@@ -11,6 +11,10 @@ export function CourseSyllabus() {
   const [loading, setLoading] = useState(true);
   const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
 
+  const visibleCourses = profile?.role === 'teacher'
+    ? courses.filter((course: any) => course.teacher_id === profile.uid || course.author_id === profile.uid)
+    : courses;
+
   useEffect(() => {
     const load = async () => {
       if (!institutionId) return;
@@ -26,7 +30,7 @@ export function CourseSyllabus() {
     };
 
     load();
-  }, [institutionId]);
+  }, [institutionId, profile?.role, profile?.uid]);
 
   if (selectedCourse) {
     return (
@@ -55,7 +59,7 @@ export function CourseSyllabus() {
         </div>
         <div className="text-right">
           <p className="text-[10px] uppercase tracking-widest text-gray-400">School content</p>
-          <p className="font-bold text-gray-900">{courses.length} courses</p>
+          <p className="font-bold text-gray-900">{visibleCourses.length} courses</p>
         </div>
       </div>
 
