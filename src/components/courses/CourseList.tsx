@@ -103,7 +103,7 @@ export function CourseList({ activeTab }: CourseListProps) {
       const courseData = {
         title,
         description,
-        teacher_id: assignedTeacherId || null,
+        teacher_id: assignedTeacherId || undefined,
         fee: Number(fee),
         status,
       };

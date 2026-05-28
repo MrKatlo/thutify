@@ -14,6 +14,7 @@ export interface RouteInfo {
   name: RouteName;
   params: {
     institutionSlug?: string;
+    role?: string;
   };
 }
 
@@ -43,9 +44,12 @@ export function parsePath(path: string): RouteInfo {
     if (subRoute === 'login') {
       return { name: 'institution-login', params: { institutionSlug: slug } };
     }
-    if (subRoute === 'admin') {
-      return { name: 'institution-admin', params: { institutionSlug: slug } };
+
+    const normalizedRole = subRoute === 'owner' ? 'admin' : subRoute;
+    if (['admin', 'teacher', 'student'].includes(normalizedRole)) {
+      return { name: 'institution-admin', params: { institutionSlug: slug, role: normalizedRole } };
     }
+
     if (subRoute === 'student-signup') {
       return { name: 'student-signup', params: { institutionSlug: slug } };
     }

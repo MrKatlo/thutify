@@ -83,9 +83,12 @@ export function InstitutionLoginPage({ institution }: InstitutionLoginPageProps)
       setActiveInstitutionId(institution.id);
       showToast("Access granted! Entering portal...", "success");
 
-      // Successful login - redirect to the institution workspace
+      const portalRole = membership.role === 'owner' ? 'admin' : membership.role;
+      const redirectSegment = ['admin', 'teacher', 'student'].includes(portalRole) ? portalRole : 'admin';
+
+      // Successful login - redirect to the institution workspace using the user's role segment
       setTimeout(() => {
-        navigate(`/${institution.slug}/admin`);
+        navigate(`/${institution.slug}/${redirectSegment}`);
       }, 1000);
 
     } catch (err: any) {
