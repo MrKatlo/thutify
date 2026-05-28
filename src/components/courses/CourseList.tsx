@@ -46,6 +46,7 @@ export function CourseList({ activeTab }: CourseListProps) {
   const [status, setStatus] = useState<'active' | 'draft' | 'archived'>('draft');
 
   const isOwner = profile?.role === 'owner';
+  const canEditCourses = profile?.role === 'owner' || profile?.role === 'teacher';
 
   useEffect(() => {
     fetchData();
@@ -66,8 +67,6 @@ export function CourseList({ activeTab }: CourseListProps) {
         const enrollments = await cfApi.listEnrollments(institutionId, undefined, profile.uid);
         const enrolledIds = enrollments.map((e: any) => e.course_id);
         setCourses(fetchedCourses.filter((c: any) => enrolledIds.includes(c.id)));
-      } else if (profile?.role === 'teacher') {
-        setCourses(fetchedCourses.filter((c: any) => c.teacher_id === profile.uid || c.author_id === profile.uid));
       } else {
         setCourses(fetchedCourses);
       }
@@ -97,7 +96,9 @@ export function CourseList({ activeTab }: CourseListProps) {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!isOwner || !institutionId) return;
+    if (!institutionId) return;
+    if (isEditing && !canEditCourses) return;
+    if (!isEditing && !isOwner) return;
 
     try {
       const courseData = {
@@ -214,10 +215,10 @@ export function CourseList({ activeTab }: CourseListProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {isOwner && (
+                    {canEditCourses && (
                       <>
                         <button onClick={() => handleEdit(course)} className="p-2 text-gray-400 hover:text-black transition-colors"><Edit className="w-4 h-4" /></button>
-                        <button onClick={() => handleDelete(course.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                        {isOwner && <button onClick={() => handleDelete(course.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>}
                       </>
                     )}
                     <button onClick={() => setViewingCourse(course)} className="flex items-center gap-1 text-xs font-bold text-black bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-black hover:text-white transition-all">

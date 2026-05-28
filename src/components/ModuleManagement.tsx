@@ -11,9 +11,7 @@ export function ModuleManagement() {
   const [selectedCourseForModule, setSelectedCourseForModule] = useState<string | null>(null);
   const [newModuleTitle, setNewModuleTitle] = useState('');
 
-  const visibleCourses = profile?.role === 'teacher'
-    ? courses.filter((course: any) => course.teacher_id === profile.uid || course.author_id === profile.uid)
-    : courses;
+  const visibleCourses = courses;
 
   useEffect(() => {
     fetchData();

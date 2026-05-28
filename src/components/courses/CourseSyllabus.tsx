@@ -11,9 +11,7 @@ export function CourseSyllabus() {
   const [loading, setLoading] = useState(true);
   const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
 
-  const visibleCourses = profile?.role === 'teacher'
-    ? courses.filter((course: any) => course.teacher_id === profile.uid || course.author_id === profile.uid)
-    : courses;
+  const visibleCourses = courses;
 
   useEffect(() => {
     const load = async () => {
