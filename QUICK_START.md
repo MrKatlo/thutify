@@ -1,4 +1,4 @@
-# Quick Start: Firebase Auth + Cloudflare D1 + R2
+![alt text](image.png)# Quick Start: Firebase Auth + Cloudflare D1 + R2
 
 ## What You Now Have
 ✅ Firebase authentication (already configured)

@@ -20,6 +20,14 @@ import type {
 export interface Env {
   DB: D1Database;
   BUCKET: R2Bucket;
+  EMAIL_PUPLIC_KEY?: string;
+  EMAIL_PRIVATE_KEY?: string;
+  EMAIL?: string;
+  APP_URL?: string;
+  MJ_APIKEY_PUBLIC?: string;
+  MJ_APIKEY_PRIVATE?: string;
+  MAILJET_APIKEY_PUBLIC?: string;
+  MAILJET_APIKEY_PRIVATE?: string;
 }
 
 interface VerifiedToken {
@@ -895,6 +903,85 @@ async function sendMockInvitationEmail(payload: {
 function generateTemporaryPassword() {
   const seed = Math.random().toString(36).slice(2, 8);
   return `Teach-${seed}A1!`;
+}
+
+function normalizeBaseUrl(value: string | undefined) {
+  const normalized = String(value || '').trim().replace(/\/+$/, '');
+  return normalized || 'http://localhost:8787';
+}
+
+async function sendTransactionalEmail(
+  env: Env,
+  payload: {
+    to: string;
+    toName?: string;
+    subject: string;
+    text: string;
+    html: string;
+    fromName?: string;
+  },
+) {
+  const publicKey =
+    env.MJ_APIKEY_PUBLIC ||
+    env.MAILJET_APIKEY_PUBLIC ||
+    env.EMAIL_PUPLIC_KEY ||
+    '';
+  const privateKey =
+    env.MJ_APIKEY_PRIVATE ||
+    env.MAILJET_APIKEY_PRIVATE ||
+    env.EMAIL_PRIVATE_KEY ||
+    '';
+  const senderEmail = String(env.EMAIL || '').trim();
+
+  if (!publicKey || !privateKey || !senderEmail) {
+    console.warn('Mailjet email skipped: missing API keys or sender email');
+    return null;
+  }
+
+  try {
+    const response = await fetch('https://api.mailjet.com/v3.1/send', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${btoa(`${publicKey}:${privateKey}`)}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        Messages: [
+          {
+            From: {
+              Email: senderEmail,
+              Name: payload.fromName || 'Thutify',
+            },
+            To: [
+              {
+                Email: payload.to,
+                Name: payload.toName || payload.to,
+              },
+            ],
+            Subject: payload.subject,
+            TextPart: payload.text,
+            HTMLPart: payload.html,
+          },
+        ],
+      }),
+    });
+
+    const bodyText = await response.text();
+    if (!response.ok) {
+      console.error('Mailjet send failed', response.status, bodyText);
+      return null;
+    }
+
+    try {
+      return JSON.parse(bodyText);
+    } catch {
+      return bodyText;
+    }
+  } catch (error) {
+    console.error('Mailjet send error', error);
+    return null;
+  }
 }
 
 async function createFirebaseEmailPasswordUser(email: string, password: string, displayName?: string) {
@@ -2215,6 +2302,28 @@ export function createApp(options: CreateAppOptions = {}) {
       ],
     );
 
+    const appBaseUrl = normalizeBaseUrl(context.env.APP_URL);
+    const resetUrl = new URL(`/?resetToken=${encodeURIComponent(token)}`, appBaseUrl).toString();
+    void sendTransactionalEmail(context.env, {
+      to: email,
+      toName: email,
+      subject: 'Reset your Thutify password',
+      text: `We received a request to reset the password for ${email}. Use the link below to continue. This link expires in 1 hour. ${resetUrl}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; color: #111827;">
+          <h2 style="margin-bottom: 8px;">Reset your password</h2>
+          <p>We received a request to reset the password for <strong>${email}</strong>.</p>
+          <p>Use the button below to continue. This reset link expires in 1 hour.</p>
+          <p style="margin: 24px 0;">
+            <a href="${resetUrl}" style="background:#111827;color:#fff;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:bold;">Reset password</a>
+          </p>
+          <p>If you did not request this reset, you can ignore this email.</p>
+        </div>
+      `,
+    }).catch((error) => {
+      console.error('Failed to send reset email', error);
+    });
+
     return context.json({ success: true, token, expiresAt });
   });
 
@@ -2333,6 +2442,23 @@ export function createApp(options: CreateAppOptions = {}) {
       );
       institution = await getInstitutionById(context.env.DB, institutionId);
       membership = await getMembership(context.env.DB, institutionId, verified.uid);
+
+      const appBaseUrl = normalizeBaseUrl(context.env.APP_URL);
+      const dashboardUrl = new URL(`/${institution?.slug || slug}/login`, appBaseUrl).toString();
+      void sendTransactionalEmail(context.env, {
+        to: verified.email,
+        toName: body.fullName || verified.name || verified.email,
+        subject: `Welcome to ${institution?.name || body.institution.name}`,
+        text: `Your institution dashboard is ready. Sign in at ${dashboardUrl} to manage your school or campus.`,
+        html: `
+          <div style="font-family: Arial, sans-serif; color: #111827;">
+            <h2 style="margin-bottom: 8px;">Welcome to ${institution?.name || body.institution.name}</h2>
+            <p>Your institution dashboard is ready. Sign in at <a href="${dashboardUrl}">${dashboardUrl}</a> to manage classrooms, students, and staff.</p>
+          </div>
+        `,
+      }).catch((error) => {
+        console.error('Failed to send institution welcome email', error);
+      });
     }
 
     return context.json({
@@ -2593,6 +2719,26 @@ export function createApp(options: CreateAppOptions = {}) {
         email: body.email || verified.email || '',
       },
     });
+
+    const applicantEmail = String(body.email || verified.email || '').trim();
+    if (applicantEmail) {
+      const dashboardUrl = new URL(`/${institution.slug}/login`, normalizeBaseUrl(context.env.APP_URL)).toString();
+      void sendTransactionalEmail(context.env, {
+        to: applicantEmail,
+        toName: body.fullName || verified.name || applicantEmail,
+        subject: `Your application to ${institution.name} is pending`,
+        text: `Your application to ${institution.name} has been submitted. We will review it and notify you when your access is approved. You can sign in at ${dashboardUrl} to track your status.`,
+        html: `
+          <div style="font-family: Arial, sans-serif; color: #111827;">
+            <h2 style="margin-bottom: 8px;">Application received</h2>
+            <p>Your application to <strong>${institution.name}</strong> has been submitted and is awaiting review.</p>
+            <p>Once approved, you will receive access to the student dashboard. You can visit <a href="${dashboardUrl}">${dashboardUrl}</a>.</p>
+          </div>
+        `,
+      }).catch((error) => {
+        console.error('Failed to send student application email', error);
+      });
+    }
 
     return context.json(mapStudentApplication(application));
   });
@@ -3079,6 +3225,28 @@ export function createApp(options: CreateAppOptions = {}) {
         status: lifecycleStatus,
       },
     });
+
+    const studentInstitution = await getInstitutionById(context.env.DB, institutionId);
+    if (studentInstitution && email) {
+      const loginUrl = new URL(`/${studentInstitution.slug}/login`, normalizeBaseUrl(context.env.APP_URL)).toString();
+      const temporaryPassword = String(body.temporaryPassword || '').trim();
+      void sendTransactionalEmail(context.env, {
+        to: email,
+        toName: fullName || email,
+        subject: `Welcome to ${studentInstitution.name}`,
+        text: `Your student account has been created for ${studentInstitution.name}. ${temporaryPassword ? `Your temporary password is ${temporaryPassword}. ` : ''}Sign in at ${loginUrl} to access your dashboard.`,
+        html: `
+          <div style="font-family: Arial, sans-serif; color: #111827;">
+            <h2 style="margin-bottom: 8px;">Welcome to ${studentInstitution.name}</h2>
+            <p>Your student account has been created.</p>
+            ${temporaryPassword ? `<p>Your temporary password is <strong>${temporaryPassword}</strong>.</p>` : ''}
+            <p>Sign in at <a href="${loginUrl}">${loginUrl}</a> to access your dashboard.</p>
+          </div>
+        `,
+      }).catch((error) => {
+        console.error('Failed to send student onboarding email', error);
+      });
+    }
 
     const student = await getStudentDetail(context.env.DB, institutionId, userId);
     return context.json(student, 201);
@@ -3696,6 +3864,24 @@ export function createApp(options: CreateAppOptions = {}) {
       inviteToken,
       temporaryPassword,
       expiresAt,
+    });
+
+    const inviteLoginUrl = new URL(`/${institution.slug}/login?invite=${inviteToken}`, normalizeBaseUrl(context.env.APP_URL)).toString();
+    void sendTransactionalEmail(context.env, {
+      to: email,
+      toName: fullName || email,
+      subject: `Welcome to ${institution.name}`,
+      text: `You have been added to ${institution.name}. Use the temporary password ${temporaryPassword} on first sign-in. Complete your onboarding at ${inviteLoginUrl}.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; color: #111827;">
+          <h2 style="margin-bottom: 8px;">Welcome to ${institution.name}</h2>
+          <p>You have been added as a teacher for ${institution.name}.</p>
+          <p>Use your temporary password <strong>${temporaryPassword}</strong> on your first sign-in, then reset it after you log in.</p>
+          <p>Start your onboarding here: <a href="${inviteLoginUrl}">${inviteLoginUrl}</a></p>
+        </div>
+      `,
+    }).catch((error) => {
+      console.error('Failed to send teacher onboarding email', error);
     });
 
     await createNotification(

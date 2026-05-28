@@ -72,6 +72,15 @@ export interface Institution {
   timezone?: string;
   currency?: string;
   locale?: string;
+  language?: string;
+  emailSender?: string;
+  email_sender?: string;
+  paymentGateway?: string;
+  payment_gateway?: string;
+  emailNotifications?: boolean;
+  email_notifications?: boolean;
+  smsNotifications?: boolean;
+  sms_notifications?: boolean;
   customDomain?: string;
   custom_domain?: string;
   createdAt: TimestampLike;

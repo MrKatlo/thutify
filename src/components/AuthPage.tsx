@@ -1,7 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { 
   signInWithEmailAndPassword, 
-  sendPasswordResetEmail,
   createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
@@ -115,7 +114,7 @@ export function AuthPage() {
     setError('');
     setLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
+      await cfApi.requestPasswordReset(email);
       setSuccess('Password reset link sent to your email.');
       setTimeout(() => setMode('login'), 3000);
     } catch (err: any) {

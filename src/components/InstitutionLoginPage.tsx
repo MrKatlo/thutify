@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import * as cfApi from '../services/cfApi';
 import { BookOpen, Mail, Lock, ShieldCheck, Loader2, AlertCircle, Check, ArrowLeft } from 'lucide-react';
@@ -105,7 +105,7 @@ export function InstitutionLoginPage({ institution }: InstitutionLoginPageProps)
     e.preventDefault();
     setLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
+      await cfApi.requestPasswordReset(email, institution.id);
       showToast("Password reset link sent to your email.", "success");
       setTimeout(() => setMode('login'), 2000);
     } catch (err: any) {
