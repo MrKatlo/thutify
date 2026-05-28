@@ -55,56 +55,67 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
     try {
       if (profile.role === 'student') {
         // --- STUDENT DYNAMIC DASHBOARD ---
-        const [enrollments, courses, liveClasses, announcements, payments] = await Promise.all([
+        const [enrollments, courses, liveClasses, announcements, payments, assignments, attendanceRecords] = await Promise.all([
           cfApi.listEnrollments(institutionId, undefined, profile.uid),
           cfApi.listCourses(institutionId),
           cfApi.listLiveClasses(institutionId),
           cfApi.listAnnouncements(institutionId),
           cfApi.listPayments(institutionId, profile.uid),
+          cfApi.listAssignments(institutionId),
+          cfApi.listAttendanceRecords(institutionId),
         ]);
 
-        const activeCourseIds = enrollments
-          .filter((e: any) => e.status === 'active')
-          .map((e: any) => e.course_id);
+        const activeEnrollments = enrollments.filter((e: any) => e.status === 'active' || !e.status);
+        const activeCourseIds = activeEnrollments.map((e: any) => e.course_id);
         const enrolled = courses.filter((c: any) => activeCourseIds.includes(c.id));
         setEnrolledCoursesList(enrolled);
 
-        // Enrolled count
-        const enrolledCount = enrolled.length;
+        const completedCount = Array.isArray(profile.completedLessons) ? profile.completedLessons.length : 0;
 
-        // For now, use placeholder for completed count (would need lesson progress tracking)
-        const completedCount = 0;
+        const studentAttendanceRecords = attendanceRecords.filter((record: any) =>
+          (record.student_id === profile.uid || record.studentId === profile.uid)
+        );
+        const attendedCount = studentAttendanceRecords.filter((record: any) => record.status === 'present').length;
+        const attendanceRate = studentAttendanceRecords.length > 0
+          ? Math.round((attendedCount / studentAttendanceRecords.length) * 100)
+          : 0;
 
-        // Attendance rate placeholder
-        const attendanceRate = 95;
-
-        // Calculate balance from payments
-        const totalPaid = payments.reduce((sum: number, p: any) => sum + (Number(p.amount_paid) || 0), 0);
-        const totalExpected = enrolled.reduce((sum: number, c: any) => sum + (Number(c.fee) || 1000), 0);
+        const totalPaid = payments.reduce((sum: number, p: any) => sum + (Number(p.amount_paid || p.amountPaid) || 0), 0);
+        const totalExpected = enrolled.reduce((sum: number, c: any) => sum + (Number(c.fee) || 0), 0);
         const balance = Math.max(0, totalExpected - totalPaid);
         const paymentStatus = balance === 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
 
         setStudentStats({
-          enrolledCount: enrolledCount,
-          completedCount: completedCount,
+          enrolledCount: enrolled.length,
+          completedCount,
           attendanceRate,
-          balance: balance,
-          paymentStatus
+          balance,
+          paymentStatus,
         });
 
-        // Upcoming live classes
         const classes = liveClasses
           .filter((lc: any) => activeCourseIds.includes(lc.course_id) || lc.course_id === 'all')
           .slice(0, 3);
         setUpcomingClasses(classes);
 
-        // Announcements for student
+        const dueAssignments = assignments
+          .filter((assignment: any) => activeCourseIds.includes(assignment.course_id || assignment.courseId))
+          .map((assignment: any) => ({
+            id: assignment.id,
+            title: assignment.title,
+            courseName: assignment.courseName || assignment.course_name || 'Course',
+            dueDate: assignment.dueDate || assignment.due_date || 'No due date',
+          }))
+          .filter((assignment: any) => assignment.dueDate !== 'No due date')
+          .sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+          .slice(0, 5);
+        setUpcomingAssignments(dueAssignments);
+
         const anns = announcements.slice(0, 3);
         setAnnouncements(anns);
 
-        // Recent activities
         setRecentActivities([
-          { type: 'course', title: 'Joined Syllabus Workspace', meta: 'Platform active account synchronized', date: 'Today' },
+          { type: 'course', title: 'Course progress synced', meta: `${completedCount} lessons completed so far`, date: 'Today' },
         ]);
 
       } else {
@@ -264,11 +275,11 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
             <Card title="Continue Learning" description="Instantly jump back into your enrolled courses.">
               <div className="space-y-4">
                 {enrolledCoursesList.map((course) => {
-                  const lessonCount = course.modules?.reduce((sum: number, m: any) => sum + (m.lessons?.length || 0), 0) || 1;
-                  const completedLessons = profile.completedLessons || [];
                   const courseLessonIds = course.modules?.flatMap((m: any) => m.lessons?.map((l: any) => l.id) || []) || [];
+                  const lessonCount = courseLessonIds.length;
+                  const completedLessons = profile.completedLessons || [];
                   const finished = courseLessonIds.filter((id: string) => completedLessons.includes(id)).length;
-                  const progress = Math.round((finished / lessonCount) * 100);
+                  const progress = lessonCount > 0 ? Math.round((finished / lessonCount) * 100) : 0;
 
                   return (
                     <div key={course.id} className="p-5 bg-gray-50 rounded-2xl border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">

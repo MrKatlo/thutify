@@ -64,7 +64,7 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
       setCourses(fetchedCourses);
 
       if (activeTab === 'payments') {
-        const list = await cfApi.listPayments(institutionId);
+        const list = await cfApi.listPayments(institutionId, profile?.role === 'student' ? profile.uid : undefined);
         setPayments(list);
       } else if (activeTab === 'invoices') {
         const list = await cfApi.listInvoices(institutionId);
@@ -159,7 +159,7 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
           </Card>
         </div>
 
-        <PaymentList payments={payments} onEdit={() => {}} onDelete={() => {}} onReceipt={handleReceipt} loading={loading} />
+        <PaymentList payments={payments} onEdit={() => {}} onDelete={() => {}} onReceipt={handleReceipt} loading={loading} readonly />
       </div>
     );
   }

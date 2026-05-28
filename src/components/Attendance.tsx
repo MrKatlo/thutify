@@ -41,6 +41,16 @@ export function Attendance() {
     try {
       const list = await cfApi.listCourses(institutionId);
       setCourses(list);
+      if (profile?.role === 'student') {
+        const enrollments = await cfApi.listEnrollments(institutionId, undefined, profile.uid);
+        const enrolledCourseIds = new Set(enrollments.map((e: any) => e.course_id));
+        const studentCourses = list.filter((course: any) => enrolledCourseIds.has(course.id));
+        setCourses(studentCourses);
+        if (studentCourses.length > 0) {
+          setSelectedCourse(studentCourses[0].course_name || studentCourses[0].title);
+        }
+        return;
+      }
       if (list.length > 0) {
         setSelectedCourse(list[0].course_name || list[0].title);
       }
@@ -57,7 +67,6 @@ export function Attendance() {
       const courseId = courseObj?.id;
       if (!courseId) return;
 
-      // Get students enrolled
       const enrollments = await cfApi.listEnrollments(institutionId, courseId);
       const studentList = enrollments.map((e: any) => ({
         id: e.student_id,
@@ -66,20 +75,43 @@ export function Attendance() {
       }));
       setStudents(studentList);
 
-      // Get attendance records
       const allRecords = await cfApi.listAttendanceRecords(institutionId);
-      const dateRecords = allRecords.filter((r: any) => {
-        const recordDate = r.created_at?.split('T')[0] || '';
-        return recordDate === selectedDate && (r.course_id === courseId || r.courseId === courseId);
-      });
-      setAttendanceRecords(dateRecords);
+      const filteredRecords = allRecords
+        .filter((r: any) => (r.course_id === courseId || r.courseId === courseId))
+        .filter((r: any) => {
+          const recordDate = (r.created_at || r.marked_at || '').toString().slice(0, 10);
+          return recordDate === selectedDate;
+        });
 
-      // Stats
-      if (dateRecords.length > 0) {
-        const pres = dateRecords.filter((a: any) => a.status === 'present').length;
-        const abs = dateRecords.filter((a: any) => a.status === 'absent').length;
-        const lat = dateRecords.filter((a: any) => a.status === 'late').length;
-        const total = dateRecords.length;
+      if (profile?.role === 'student') {
+        const studentRecords = allRecords
+          .filter((r: any) => r.student_id === profile.uid || r.studentId === profile.uid)
+          .map((r: any) => ({
+            ...r,
+            date: (r.created_at || r.marked_at || new Date().toISOString()).toString().slice(0, 10),
+            course: r.course_name || r.courseName || selectedCourse,
+          }));
+        const studentDateRecords = studentRecords.filter((record: any) => record.date === selectedDate);
+        const total = studentDateRecords.length;
+        const present = studentDateRecords.filter((record: any) => record.status === 'present').length;
+        const absent = studentDateRecords.filter((record: any) => record.status === 'absent').length;
+        const late = studentDateRecords.filter((record: any) => record.status === 'late').length;
+        setAttendanceRecords(studentDateRecords);
+        setStats({
+          present: total > 0 ? Math.round((present / total) * 100) : 0,
+          absent: total > 0 ? Math.round((absent / total) * 100) : 0,
+          late: total > 0 ? Math.round((late / total) * 100) : 0,
+        });
+        return;
+      }
+
+      setAttendanceRecords(filteredRecords);
+
+      if (filteredRecords.length > 0) {
+        const pres = filteredRecords.filter((a: any) => a.status === 'present').length;
+        const abs = filteredRecords.filter((a: any) => a.status === 'absent').length;
+        const lat = filteredRecords.filter((a: any) => a.status === 'late').length;
+        const total = filteredRecords.length;
         setStats({
           present: Math.round((pres / total) * 100),
           absent: Math.round((abs / total) * 100),

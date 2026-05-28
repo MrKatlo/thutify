@@ -6,9 +6,10 @@ interface PaymentListProps {
   onDelete: (p: any) => void;
   onReceipt: (p: any) => void;
   loading: boolean;
+  readonly?: boolean;
 }
 
-export function PaymentList({ payments, onEdit, onDelete, onReceipt, loading }: PaymentListProps) {
+export function PaymentList({ payments, onEdit, onDelete, onReceipt, loading, readonly = false }: PaymentListProps) {
   return (
     <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm mt-6">
       <div className="overflow-x-auto">
@@ -56,8 +57,12 @@ export function PaymentList({ payments, onEdit, onDelete, onReceipt, loading }: 
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <button onClick={() => onReceipt(p)} className="p-1.5 text-gray-400 hover:text-black rounded-lg hover:bg-gray-50"><Printer className="w-4 h-4" /></button>
-                      <button onClick={() => onEdit(p)} className="p-1.5 text-gray-400 hover:text-black rounded-lg hover:bg-gray-50"><Edit2 className="w-4 h-4" /></button>
-                      <button onClick={() => onDelete(p)} className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
+                      {!readonly && (
+                        <>
+                          <button onClick={() => onEdit(p)} className="p-1.5 text-gray-400 hover:text-black rounded-lg hover:bg-gray-50"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => onDelete(p)} className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
