@@ -22,10 +22,7 @@ export function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-widest mb-6 border border-blue-100/50">
-              <Zap className="w-3 h-3 fill-current" />
-              The Modern LMS for Modern Academies
-            </div>
+          
             <h1 className="text-5xl md:text-7xl font-display font-black text-gray-900 leading-[1.1] mb-8 max-w-4xl mx-auto">
               Transform Your Learning <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-teal-500 to-orange-500">Experience.</span>
             </h1>
