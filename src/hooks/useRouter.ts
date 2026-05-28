@@ -8,6 +8,15 @@ export type RouteName =
   | 'institution-login'
   | 'institution-admin'
   | 'student-signup'
+  | 'features'
+  | 'solutions'
+  | 'pricing'
+  | 'documentation'
+  | 'api-reference'
+  | 'help-center'
+  | 'privacy-policy'
+  | 'terms-of-service'
+  | 'cookie-policy'
   | 'not-found';
 
 export interface RouteInfo {
@@ -35,6 +44,22 @@ export function parsePath(path: string): RouteInfo {
   
   if (cleanPath === '/platform-admin') {
     return { name: 'platform-admin', params: {} };
+  }
+
+  const staticRoutes: Record<string, RouteName> = {
+    '/features': 'features',
+    '/solutions': 'solutions',
+    '/pricing': 'pricing',
+    '/documentation': 'documentation',
+    '/api-reference': 'api-reference',
+    '/help-center': 'help-center',
+    '/privacy-policy': 'privacy-policy',
+    '/terms-of-service': 'terms-of-service',
+    '/cookie-policy': 'cookie-policy',
+  };
+
+  if (staticRoutes[cleanPath]) {
+    return { name: staticRoutes[cleanPath], params: {} };
   }
   
   // Pattern: /:slug/sub-route

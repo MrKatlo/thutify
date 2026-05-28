@@ -5,6 +5,7 @@ import { Card } from './ui/Card';
 import { navigate } from '../hooks/useRouter';
 import { motion, AnimatePresence } from 'motion/react';
 import { Institution } from '../types';
+import logo from '../images/thutiy,com.png';
 
 export function InstitutionSearchPage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -52,8 +53,8 @@ export function InstitutionSearchPage() {
         
         {/* Header */}
         <div className="text-center mb-8 flex flex-col items-center">
-          <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-black/10 cursor-pointer hover:scale-105 transition-transform" onClick={() => navigate('/')}>
-            <BookOpen className="text-white w-7 h-7" />
+          <div className="h-16 mb-4 cursor-pointer hover:scale-105 transition-transform" onClick={() => navigate('/')}>
+            <img src={logo} alt="Thutify" className="h-full w-auto object-contain" />
           </div>
           <h1 className="text-3xl font-black tracking-tight text-gray-900">Find Your Institution</h1>
           <p className="text-gray-500 text-sm font-semibold mt-1">Search below to access your school's custom portal or sign up for classes.</p>

@@ -6,6 +6,7 @@ import { BookOpen, User, Mail, Lock, Phone, Globe, Shield, Sparkles, Loader2, Ch
 import { Button, Card } from './ui/Card';
 import { navigate } from '../hooks/useRouter';
 import { motion, AnimatePresence } from 'motion/react';
+import logo from '../images/thutiy,com.png';
 
 export function InstitutionSignupPage() {
   // Input fields
@@ -223,8 +224,8 @@ export function InstitutionSignupPage() {
 
       <div className="w-full max-w-2xl py-12">
         <div className="text-center mb-8 flex flex-col items-center">
-          <div className="w-14 h-14 bg-black rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-black/10 cursor-pointer hover:scale-105 transition-transform" onClick={() => navigate('/')}>
-            <BookOpen className="text-white w-7 h-7" />
+          <div className="h-16 mb-4 cursor-pointer hover:scale-105 transition-transform" onClick={() => navigate('/')}>
+            <img src={logo} alt="Thutify" className="h-full w-auto object-contain" />
           </div>
           <h1 className="text-3xl font-black tracking-tight text-gray-900">Create an Institution</h1>
           <p className="text-gray-500 text-sm font-semibold mt-1">Set up your school or academy and start teaching in minutes.</p>

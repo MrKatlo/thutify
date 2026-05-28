@@ -30,6 +30,17 @@ import { Button } from './components/ui/Card';
 import { logout } from './lib/firebase';
 import { useRouter, navigate } from './hooks/useRouter';
 import { LandingPage } from './components/LandingPage';
+import { 
+  FeaturesPage, 
+  SolutionsPage, 
+  PricingPage, 
+  DocumentationPage, 
+  ApiReferencePage, 
+  HelpCenterPage, 
+  PrivacyPolicyPage, 
+  TermsOfServicePage, 
+  CookiePolicyPage 
+} from './components/StaticPages';
 import { InstitutionSignupPage } from './components/InstitutionSignupPage';
 import { InstitutionSearchPage } from './components/InstitutionSearchPage';
 import { PlatformAdminDashboard } from './components/PlatformAdminDashboard';
@@ -158,6 +169,24 @@ export default function App() {
   switch (route.name) {
     case 'landing':
       return <LandingPage />;
+    case 'features':
+      return <FeaturesPage />;
+    case 'solutions':
+      return <SolutionsPage />;
+    case 'pricing':
+      return <PricingPage />;
+    case 'documentation':
+      return <DocumentationPage />;
+    case 'api-reference':
+      return <ApiReferencePage />;
+    case 'help-center':
+      return <HelpCenterPage />;
+    case 'privacy-policy':
+      return <PrivacyPolicyPage />;
+    case 'terms-of-service':
+      return <TermsOfServicePage />;
+    case 'cookie-policy':
+      return <CookiePolicyPage />;
     case 'signup-institution':
       return <InstitutionSignupPage />;
     case 'find-institution':
