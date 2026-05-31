@@ -24,6 +24,7 @@ export interface Env {
   EMAIL_PRIVATE_KEY?: string;
   EMAIL?: string;
   APP_URL?: string;
+  SENDGRID_API_KEY?: string;
   MJ_APIKEY_PUBLIC?: string;
   MJ_APIKEY_PRIVATE?: string;
   MAILJET_APIKEY_PUBLIC?: string;
@@ -921,6 +922,58 @@ async function sendTransactionalEmail(
     fromName?: string;
   },
 ) {
+  const sendgridKey = String(env.SENDGRID_API_KEY || '').trim();
+  const senderEmail = String(env.EMAIL || '').trim();
+
+  if (sendgridKey && senderEmail) {
+    try {
+      const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${sendgridKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          personalizations: [
+            {
+              to: [
+                {
+                  email: payload.to,
+                  name: payload.toName || payload.to,
+                },
+              ],
+            },
+          ],
+          from: {
+            email: senderEmail,
+            name: payload.fromName || 'Thutify',
+          },
+          subject: payload.subject,
+          content: [
+            {
+              type: 'text/plain',
+              value: payload.text,
+            },
+            {
+              type: 'text/html',
+              value: payload.html,
+            },
+          ],
+        }),
+      });
+
+      const bodyText = await response.text();
+      if (!response.ok) {
+        console.error('SendGrid send failed', response.status, bodyText);
+        return null;
+      }
+      return { status: response.status, body: bodyText };
+    } catch (error) {
+      console.error('SendGrid send error', error);
+      return null;
+    }
+  }
+
   const publicKey =
     env.MJ_APIKEY_PUBLIC ||
     env.MAILJET_APIKEY_PUBLIC ||
@@ -931,10 +984,10 @@ async function sendTransactionalEmail(
     env.MAILJET_APIKEY_PRIVATE ||
     env.EMAIL_PRIVATE_KEY ||
     '';
-  const senderEmail = String(env.EMAIL || '').trim();
+  const mailjetSender = senderEmail;
 
-  if (!publicKey || !privateKey || !senderEmail) {
-    console.warn('Mailjet email skipped: missing API keys or sender email');
+  if (!publicKey || !privateKey || !mailjetSender) {
+    console.warn('Email skipped: missing SendGrid/Mailjet API keys or sender email');
     return null;
   }
 
@@ -950,7 +1003,7 @@ async function sendTransactionalEmail(
         Messages: [
           {
             From: {
-              Email: senderEmail,
+              Email: mailjetSender,
               Name: payload.fromName || 'Thutify',
             },
             To: [
