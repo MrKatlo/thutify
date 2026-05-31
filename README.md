@@ -1,6 +1,6 @@
-# ZeroT LMS
+Thutify 
 
-ZeroT LMS is a multi-tenant learning management system built with React, Vite, Tailwind CSS, Cloudflare Workers, D1, R2, and Firebase Authentication.
+Thutify LMS is a multi-tenant learning management system built with React, Vite, Tailwind CSS, Cloudflare Workers, D1, R2, and Firebase Authentication.
 
 This repository is now aligned around the completed Phase 0 foundation:
 
