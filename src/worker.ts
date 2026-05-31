@@ -2330,7 +2330,7 @@ export function createApp(options: CreateAppOptions = {}) {
     if (object.httpMetadata?.contentLanguage) headers.set('content-language', object.httpMetadata.contentLanguage);
     if (object.httpMetadata?.cacheControl) headers.set('cache-control', object.httpMetadata.cacheControl);
     headers.set('etag', object.etag);
-    return new Response(object.body, { headers });
+    return new Response(object.body as unknown as BodyInit, { headers });
   });
 
   app.post('/api/auth/password-reset-request', async (context) => {

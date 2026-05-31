@@ -25,7 +25,7 @@
   ],
   "env": {
     "production": {
-      "route": "api.zerot.com/*"
+      "route": "learn.thutify.com/*"
     }
   },
   "observability": {
