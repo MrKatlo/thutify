@@ -6,6 +6,7 @@ import { Plus, ChevronDown, ChevronUp, FileText, Trash2, Edit, Eye, EyeOff } fro
 import { motion, AnimatePresence } from 'motion/react';
 import * as cfApi from '../../services/cfApi';
 import { LessonCreationWizard } from './LessonCreationWizard';
+import { LessonReader } from './LessonReader';
 
 interface CourseDetailProps {
   course: any;
@@ -36,7 +37,7 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
   const [lessonToDelete, setLessonToDelete] = useState<{ id: string; title: string } | null>(null);
 
   // Student active learning flow states
-  const [activeStudyLesson, setActiveStudyLesson] = useState<any | null>(null);
+  const [viewingLesson, setViewingLesson] = useState<any | null>(null);
 
   useEffect(() => {
     fetchModules();
@@ -143,6 +144,10 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
     }
   };
 
+  if (viewingLesson) {
+    return <LessonReader lesson={viewingLesson} course={course} onBack={() => setViewingLesson(null)} />;
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -215,7 +220,7 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
                                 {role === 'student' ? (
                                   <div className="flex items-center gap-2">
                                     <Button 
-                                      onClick={() => setActiveStudyLesson(lesson)}
+                                      onClick={() => setViewingLesson(lesson)}
                                       className="text-xs py-1.5 bg-black text-white hover:bg-gray-800"
                                     >
                                       Study Lesson
@@ -233,6 +238,12 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2">
+                                    <Button 
+                                      onClick={() => setViewingLesson(lesson)}
+                                      className="text-xs py-1.5 bg-black text-white hover:bg-gray-800"
+                                    >
+                                      Preview Lesson
+                                    </Button>
                                     <button 
                                       onClick={() => handleTogglePublishLesson(lesson.id, !!lesson.published)}
                                       className="p-2 text-gray-400 hover:text-black transition-colors"
@@ -348,29 +359,8 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
           </div>
         )}
 
-        {activeStudyLesson && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setActiveStudyLesson(null)} />
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative w-full max-w-2xl bg-white rounded-3xl p-8 max-h-[85vh] overflow-y-auto shadow-2xl">
-               <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
-                <h3 className="text-2xl font-black text-gray-900">{activeStudyLesson.title}</h3>
-                <button onClick={() => setActiveStudyLesson(null)} className="text-lg">✕</button>
-              </div>
-              <div className="space-y-6">
-                {activeStudyLesson.videoUrl && (
-                  <div className="w-full aspect-video bg-black rounded-2xl flex items-center justify-center text-white font-bold italic shadow-xl">
-                     Video Player Mock: {activeStudyLesson.videoUrl}
-                  </div>
-                )}
-                <div className="bg-gray-50 p-6 rounded-2xl text-sm leading-relaxed text-gray-700 font-medium">
-                  {activeStudyLesson.content}
-                </div>
-                <div className="flex justify-end pt-4 border-t border-gray-100">
-                   <Button onClick={() => setActiveStudyLesson(null)} className="bg-black text-white px-8">Close Workspace</Button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
+        {viewingLesson && (
+          <LessonReader lesson={viewingLesson} course={course} onBack={() => setViewingLesson(null)} />
         )}
       </AnimatePresence>
     </div>
