@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { createRecord, uploadFile, readRecords } from '@/services/cfApi';
+import { useToast } from './ui/Toast';
 
 interface UserProfile {
   id: string;
@@ -24,6 +25,7 @@ export function UserManagementExample() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const toast = useToast();
 
   /**
    * Handle user signup
@@ -72,7 +74,7 @@ export function UserManagementExample() {
       // Refresh user list
       await loadUsers();
 
-      alert('User created successfully!');
+      toast.success('User created successfully!');
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'An error occurred';
       setError(errorMsg);

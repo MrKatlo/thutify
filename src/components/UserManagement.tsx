@@ -1,6 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { UserProfile, UserInvite, UserRole, UserStatus } from '../types';
+import { useToast } from './ui/Toast';
 import { Card, Button } from './ui/Card';
 import { 
   UserPlus, 
@@ -23,6 +24,7 @@ import * as cfApi from '../services/cfApi';
 
 export function UserManagement() {
   const { profile, institutionId } = useAuth();
+  const toast = useToast();
   const [users, setUsers] = useState<any[]>([]);
   const [invites, setInvites] = useState<UserInvite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,9 +84,10 @@ export function UserManagement() {
       setShowInviteForm(false);
       setActiveApplicationId(null);
       fetchData();
-      alert('Invite sent successfully!');
+      toast.success('Invite sent successfully!');
     } catch (error) {
       console.error("Create invite error:", error);
+      toast.error('Could not send invite.');
     } finally {
       setLoading(false);
     }
@@ -121,7 +124,7 @@ export function UserManagement() {
   const copyInviteLink = (token: string) => {
     const url = `${window.location.origin}/auth?token=${token}`;
     navigator.clipboard.writeText(url);
-    alert('Invite link copied to clipboard!');
+    toast.success('Invite link copied to clipboard!');
   };
 
   const handleApproveApplication = (app: any) => {

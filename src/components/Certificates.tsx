@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from './ui/Toast';
 import * as cfApi from '../services/cfApi';
 
 // Sub-components
@@ -42,20 +43,23 @@ export function Certificates() {
     }
   };
 
+  const toast = useToast();
+
   const handleGenerate = async (studentId: string, courseId: string) => {
     if (!institutionId) return;
     try {
       await cfApi.generateCertificate(institutionId, studentId, courseId);
-      alert("Certificate generated successfully!");
+      toast.success("Certificate generated successfully!");
       fetchData();
     } catch (err) {
       console.error("Failed to generate certificate:", err);
+      toast.error("Could not generate certificate. Please try again.");
     }
   };
 
   const handleVerify = (codeOrCert: string | any) => {
     const code = typeof codeOrCert === 'string' ? codeOrCert : codeOrCert.verification_code || codeOrCert.id;
-    alert(`Verifying Certificate: ${code}\nStatus: Officially Recorded & Authenticated`);
+    toast.success(`Verifying Certificate: ${code}\nStatus: Officially Recorded & Authenticated`);
   };
 
   const handleDownload = (cert: any) => {

@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from './ui/Toast';
 import { Card, Button } from './ui/Card';
 import { Plus } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
@@ -11,6 +12,7 @@ import { LiveClassCreate } from './live-classes/LiveClassCreate';
 
 export function LiveClasses() {
   const { profile } = useAuth();
+  const toast = useToast();
   const [classes, setClasses] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,9 +70,10 @@ export function LiveClasses() {
       setShowForm(false);
       setFormData({ title: '', courseName: '', dateTime: '', meetingLink: '', platform: 'Zoom' });
       fetchClasses();
-      alert("Live class scheduled!");
+      toast.success("Live class scheduled!");
     } catch (error) {
       console.error("Failed to create live class:", error);
+      toast.error("Could not schedule live class.");
     }
   };
 

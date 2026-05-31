@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from './ui/Toast';
 import { Card, Button } from './ui/Card';
 import { Megaphone, Clock, Send, MessageSquare, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -29,6 +30,8 @@ export function Announcements() {
   useEffect(() => {
     fetchData();
   }, [profile, institutionId]);
+
+  const toast = useToast();
 
   useEffect(() => {
     if (activeSubTab === 'conversations') {
@@ -78,9 +81,10 @@ export function Announcements() {
       });
       setAnnContent('');
       fetchData();
-      alert("Announcement published!");
+      toast.success("Announcement published!");
     } catch (error) {
       console.error("Post announcement error:", error);
+      toast.error("Unable to publish announcement.");
     } finally {
       setSubmittingAnn(false);
     }

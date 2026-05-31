@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent, ChangeEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from './ui/Toast';
 import { Card, Button } from './ui/Card';
 import { DollarSign, Search, Plus, CheckCircle2, AlertCircle, X, Printer, Trash2, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -17,6 +18,7 @@ interface FinancialsProps {
 
 export function Financials({ initialTab = 'payments' }: FinancialsProps) {
   const { profile, isOwner, institutionId } = useAuth();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<'payments' | 'invoices' | 'refunds'>(initialTab);
   
   // Data States
@@ -103,9 +105,10 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
       setShowForm(false);
       setFormData({ studentId: '', courseId: '', amountPaid: '', totalFee: '', method: 'Transfer', reference: '' });
       fetchData();
-      alert("Payment recorded successfully!");
+      toast.success("Payment recorded successfully!");
     } catch (err) {
       console.error("Save payment failed:", err);
+      toast.error("Unable to record payment.");
     }
   };
 

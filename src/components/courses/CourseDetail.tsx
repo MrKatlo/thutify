@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useToast } from '../ui/Toast';
 import { Button } from '../ui/Card';
 import { Plus, ChevronDown, ChevronUp, FileText, Trash2, Edit, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -14,6 +15,7 @@ interface CourseDetailProps {
 
 export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailProps) {
   const { profile, institutionId } = useAuth();
+  const toast = useToast();
   
   // Data states
   const [modules, setModules] = useState<any[]>([]);
@@ -65,10 +67,11 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
     if (!profile) return;
     try {
       await cfApi.updateLessonProgress(lessonId, { completed: !isCompleted });
-      alert("Lesson progress updated!");
+      toast.success("Lesson progress updated!");
       onUpdate();
     } catch (err) {
       console.error("Failed to toggle lesson completion:", err);
+      toast.error("Unable to update lesson progress.");
     }
   };
 
@@ -80,9 +83,10 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
       setNewModuleTitle('');
       setShowModuleForm(false);
       fetchModules();
-      alert("Module added successfully!");
+      toast.success("Module added successfully!");
     } catch (error) {
       console.error("Add module failed:", error);
+      toast.error("Could not add module.");
     }
   };
 
@@ -114,9 +118,10 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
       setShowLessonForm(null);
       setEditingLessonTarget(null);
       fetchModules();
-      alert(editingLessonTarget ? "Lesson updated!" : "Lesson added!");
+      toast.success(editingLessonTarget ? "Lesson updated!" : "Lesson added!");
     } catch (error) {
       console.error("Save lesson failed:", error);
+      toast.error("Could not save lesson.");
     }
   };
 

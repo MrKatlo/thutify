@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from './ui/Toast';
 import { Card, Button } from './ui/Card';
 import { Palette, Globe, Shield, CreditCard, User, Clock, Bell, ImageIcon, Check, Lock, Mail, DollarSign } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -11,6 +12,7 @@ interface SystemSettingsProps {
 
 export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
   const { profile, institutionId } = useAuth();
+  const toast = useToast();
 
   const personalTabs = [
     { id: 'profile', label: 'My Profile', icon: User },
@@ -107,13 +109,13 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
           email_notifications: emailNotifications,
           sms_notifications: smsNotifications,
         });
-        alert("Institutional settings saved successfully!");
+        toast.success("Institutional settings saved successfully!");
       } else {
         await cfApi.updateCurrentUser({
           fullName: displayName,
           photoUrl: photoURL
         });
-        alert("Profile details saved successfully!");
+        toast.success("Profile details saved successfully!");
       }
       fetchData();
     } catch (err) {

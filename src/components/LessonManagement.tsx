@@ -2,11 +2,13 @@ import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Course } from '../types';
 import { Card, Button } from './ui/Card';
+import { useToast } from './ui/Toast';
 import { BookOpen, FileText, Trash2, Eye, EyeOff, Loader2, Plus, X } from 'lucide-react';
 import * as cfApi from '../services/cfApi';
 
 export function LessonManagement() {
   const { profile, institutionId } = useAuth();
+  const toast = useToast();
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedModuleForLesson, setSelectedModuleForLesson] = useState<string | null>(null);
@@ -65,10 +67,10 @@ export function LessonManagement() {
       setNewLessonContent('');
       setNewLessonResource('');
       fetchData();
-      alert('Lesson added successfully.');
+      toast.success('Lesson added successfully.');
     } catch (error) {
       console.error('Create lesson failed:', error);
-      alert('Could not add lesson.');
+      toast.error('Could not add lesson.');
     }
   };
 

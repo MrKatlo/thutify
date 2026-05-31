@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from './ui/Toast';
 import { Card, Button } from './ui/Card';
 import { Plus, X } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
@@ -21,6 +22,7 @@ interface AssessmentProps {
 
 export function Assessment({ initialMode }: AssessmentProps) {
   const { profile, institutionId } = useAuth();
+  const toast = useToast();
   const [activeSubTab, setActiveSubTab] = useState<'assignments' | 'submissions' | 'quizzes'>(() => {
     if (!initialMode) return 'assignments';
     if (initialMode.endsWith('/quizzes') || initialMode.endsWith('/exams') || initialMode.endsWith('/auto-grading')) return 'quizzes';
@@ -147,9 +149,10 @@ export function Assessment({ initialMode }: AssessmentProps) {
       setShowAssignForm(false);
       resetAssignForm();
       fetchData();
-      alert("Assignment saved!");
+      toast.success("Assignment saved!");
     } catch (error) {
       console.error("Failed to save assignment:", error);
+      toast.error("Could not save assignment.");
     }
   };
 

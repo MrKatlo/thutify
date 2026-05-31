@@ -1,5 +1,6 @@
 import { useState, useEffect, ChangeEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from './ui/Toast';
 import { Card, Button } from './ui/Card';
 import { Folder, FileText, Download, Plus, Search, Film, Eye, Loader2, X, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -12,6 +13,7 @@ interface ContentLibraryProps {
 
 export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload = false }: ContentLibraryProps) {
   const { profile, institutionId } = useAuth();
+  const toast = useToast();
   
   // States
   const [loading, setLoading] = useState(true);
@@ -99,13 +101,13 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
       });
 
       setUploadProgress(100);
-      alert("Material uploaded successfully!");
+      toast.success("Material uploaded successfully!");
       setShowUploadModal(false);
       setSelectedFile(null);
       fetchMaterials();
     } catch (err) {
       console.error("Upload failed:", err);
-      alert("Upload failed. Check your connection.");
+      toast.error("Upload failed. Check your connection.");
     } finally {
       setUploading(false);
     }
@@ -155,10 +157,11 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
     if (!confirm("Are you sure?")) return;
     try {
       await cfApi.deleteMaterial(institutionId, fileId);
-      alert("Material removed.");
+      toast.success("Material removed.");
       fetchMaterials();
     } catch (err) {
       console.error("Delete material failed:", err);
+      toast.error("Failed to remove material.");
     }
   };
 

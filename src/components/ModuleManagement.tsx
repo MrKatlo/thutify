@@ -1,11 +1,13 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Card, Button } from './ui/Card';
+import { useToast } from './ui/Toast';
 import { BookOpen, Layers, Trash2, Loader2, Plus, X } from 'lucide-react';
 import * as cfApi from '../services/cfApi';
 
 export function ModuleManagement() {
   const { profile, institutionId } = useAuth();
+  const toast = useToast();
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCourseForModule, setSelectedCourseForModule] = useState<string | null>(null);
@@ -58,10 +60,10 @@ export function ModuleManagement() {
       setSelectedCourseForModule(null);
       setNewModuleTitle('');
       fetchData();
-      alert('Module created successfully.');
+      toast.success('Module created successfully.');
     } catch (error) {
       console.error('Create module failed:', error);
-      alert('Could not create module.');
+      toast.error('Could not create module.');
     }
   };
 

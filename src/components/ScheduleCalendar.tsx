@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from './ui/Toast';
 import { Card, Button } from './ui/Card';
 import { Calendar as CalendarIcon, Clock, BookOpen, Bell, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -7,6 +8,7 @@ import * as cfApi from '../services/cfApi';
 
 export function ScheduleCalendar() {
   const { profile, institutionId } = useAuth();
+  const toast = useToast();
   const [schedule, setSchedule] = useState<any[]>([]);
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,10 +67,10 @@ export function ScheduleCalendar() {
         teacher_id: profile?.uid,
       });
       await fetchData();
-      alert('Exam scheduled successfully.');
+      toast.success('Exam scheduled successfully.');
     } catch (err) {
       console.error('Exam scheduling failed:', err);
-      alert('Unable to schedule exam. Please try again.');
+      toast.error('Unable to schedule exam. Please try again.');
     } finally {
       setSaving(false);
     }
