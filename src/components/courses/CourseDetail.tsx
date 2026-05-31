@@ -5,6 +5,7 @@ import { Button } from '../ui/Card';
 import { Plus, ChevronDown, ChevronUp, FileText, Trash2, Edit, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as cfApi from '../../services/cfApi';
+import { LessonCreationWizard } from './LessonCreationWizard';
 
 interface CourseDetailProps {
   course: any;
@@ -27,11 +28,12 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
   const [newModuleTitle, setNewModuleTitle] = useState('');
   
   // Lesson Form states
-  const [showLessonForm, setShowLessonForm] = useState<string | null>(null);
+  const [lessonWizardModule, setLessonWizardModule] = useState<any | null>(null);
   const [newLessonTitle, setNewLessonTitle] = useState('');
   const [newLessonContent, setNewLessonContent] = useState('');
   const [newLessonResource, setNewLessonResource] = useState('');
   const [editingLessonTarget, setEditingLessonTarget] = useState<any | null>(null);
+  const [lessonToDelete, setLessonToDelete] = useState<{ id: string; title: string } | null>(null);
 
   // Student active learning flow states
   const [activeStudyLesson, setActiveStudyLesson] = useState<any | null>(null);
@@ -92,46 +94,43 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
 
   const handleSaveLesson = async (e: FormEvent) => {
     e.preventDefault();
-    if (!institutionId || (!showLessonForm && !editingLessonTarget)) return;
+    if (!institutionId || !editingLessonTarget) return;
 
     try {
-      if (editingLessonTarget) {
-        await cfApi.updateLesson(editingLessonTarget.id, {
-          title: newLessonTitle,
-          content: newLessonContent,
-          videoUrl: newLessonResource
-        });
-      } else {
-        await cfApi.createLesson(institutionId, {
-          module_id: showLessonForm,
-          course_id: course.id,
-          title: newLessonTitle,
-          content: newLessonContent,
-          videoUrl: newLessonResource,
-          published: 1
-        });
-      }
+      await cfApi.updateLesson(editingLessonTarget.id, {
+        title: newLessonTitle,
+        content: newLessonContent,
+        videoUrl: newLessonResource,
+      });
 
       setNewLessonTitle('');
       setNewLessonContent('');
       setNewLessonResource('');
-      setShowLessonForm(null);
       setEditingLessonTarget(null);
       fetchModules();
-      toast.success(editingLessonTarget ? "Lesson updated!" : "Lesson added!");
+      toast.success('Lesson updated!');
     } catch (error) {
-      console.error("Save lesson failed:", error);
-      toast.error("Could not save lesson.");
+      console.error('Save lesson failed:', error);
+      toast.error('Could not save lesson.');
     }
   };
 
-  const handleDeleteLesson = async (lessonId: string) => {
-    if (!confirm("Are you sure?")) return;
+  const handleRequestDeleteLesson = (lessonId: string, lessonTitle: string) => {
+    setLessonToDelete({ id: lessonId, title: lessonTitle });
+  };
+
+  const handleDeleteLesson = async () => {
+    if (!lessonToDelete) return;
     try {
-      await cfApi.deleteLesson(lessonId);
+      await cfApi.deleteLesson(lessonToDelete.id);
       fetchModules();
+      onUpdate();
+      toast.success('Lesson deleted successfully.');
     } catch (error) {
-      console.error("Delete lesson failed:", error);
+      console.error('Delete lesson failed:', error);
+      toast.error('Could not delete lesson.');
+    } finally {
+      setLessonToDelete(null);
     }
   };
 
@@ -247,7 +246,7 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
                                       <Edit className="w-4 h-4" />
                                     </button>
                                     <button 
-                                      onClick={() => handleDeleteLesson(lesson.id)}
+                                      onClick={() => handleRequestDeleteLesson(lesson.id, lesson.title)}
                                       className="p-2 text-gray-400 hover:text-red-500 transition-colors"
                                     >
                                       <Trash2 className="w-4 h-4" />
@@ -259,7 +258,7 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
                           ))}
                         {role !== 'student' && (
                           <button 
-                            onClick={() => setShowLessonForm(module.id)}
+                            onClick={() => setLessonWizardModule(module)}
                             className="w-full py-3 border border-dashed border-gray-200 rounded-xl text-xs font-bold text-gray-400 hover:text-black hover:border-black transition-all flex items-center justify-center gap-2"
                           >
                             <Plus className="w-4 h-4" /> Add Lesson
@@ -292,20 +291,59 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
           </div>
         )}
 
-        {(showLessonForm || editingLessonTarget) && (
+        {lessonWizardModule && (
+          <LessonCreationWizard
+            module={lessonWizardModule}
+            course={course}
+            institutionId={institutionId}
+            onClose={() => setLessonWizardModule(null)}
+            onCreated={() => {
+              setLessonWizardModule(null);
+              fetchModules();
+              onUpdate();
+            }}
+          />
+        )}
+
+        {(editingLessonTarget) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowLessonForm(null); setEditingLessonTarget(null); }} />
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setEditingLessonTarget(null); }} />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl">
-              <h3 className="text-xl font-black mb-6">{editingLessonTarget ? 'Edit Lesson' : 'Add New Lesson'}</h3>
+              <h3 className="text-xl font-black mb-6">Edit Lesson</h3>
               <form onSubmit={handleSaveLesson} className="space-y-4">
                 <input required placeholder="Lesson Title" value={newLessonTitle} onChange={(e) => setNewLessonTitle(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black" />
                 <textarea required placeholder="Content / Description" value={newLessonContent} onChange={(e) => setNewLessonContent(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none h-32" />
                 <input type="url" placeholder="Resource / Video URL" value={newLessonResource} onChange={(e) => setNewLessonResource(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none" />
                 <div className="flex gap-3">
-                  <Button variant="outline" onClick={() => { setShowLessonForm(null); setEditingLessonTarget(null); }} className="flex-1">Cancel</Button>
-                  <Button type="submit" className="flex-1 bg-black text-white">{editingLessonTarget ? 'Save' : 'Add'}</Button>
+                  <Button variant="outline" onClick={() => { setEditingLessonTarget(null); }} className="flex-1">Cancel</Button>
+                  <Button type="submit" className="flex-1 bg-black text-white">Save</Button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+
+        {lessonToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setLessonToDelete(null)} />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative w-full max-w-lg bg-white rounded-3xl p-8 shadow-2xl">
+              <div className="flex items-start gap-4">
+                <div className="rounded-3xl bg-amber-50 p-3">
+                  <EyeOff className="w-5 h-5 text-amber-700" />
+                </div>
+                <div className="space-y-3">
+                  <h3 className="text-xl font-black text-gray-900">Delete lesson</h3>
+                  <p className="text-sm text-gray-600">Are you sure you want to delete “{lessonToDelete.title}”? This action cannot be undone.</p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                    <Button type="button" variant="outline" onClick={() => setLessonToDelete(null)}>
+                      Cancel
+                    </Button>
+                    <Button type="button" className="bg-red-600 text-white" onClick={handleDeleteLesson}>
+                      Delete lesson
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}
