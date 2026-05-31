@@ -3073,9 +3073,12 @@ export function createApp(options: CreateAppOptions = {}) {
     const offset = Math.max(toNumber(context.req.query('offset'), 0), 0);
 
     let students = await getStudentSummaryRows(context.env.DB, institutionId);
+    students.sort((a, b) =>
+      String((a.fullName || a.full_name || '')).localeCompare(String((b.fullName || b.full_name || ''))),
+    );
     if (q) {
       students = students.filter((student) =>
-        [student.fullName, student.email, student.studentNumber]
+        [student.fullName, student.full_name, student.email, student.studentNumber, student.student_number]
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(q)),
       );

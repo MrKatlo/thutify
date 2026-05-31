@@ -1,40 +1,58 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { Card, Button } from './ui/Card';
-import { Calendar } from 'lucide-react';
+import { Card } from './ui/Card';
 import * as cfApi from '../services/cfApi';
+import type { AttendanceRecord, StudentSummary, TeacherSummary } from '../types';
 
 // Sub-components
 import { AttendanceSession } from './attendance/AttendanceSession';
 import { AttendanceReport } from './attendance/AttendanceReport';
 import { AttendanceAnalytics } from './attendance/AttendanceAnalytics';
 
+type ToastState = { message: string; type: 'success' | 'error' | 'warning' } | null;
+
 export function Attendance() {
   const { profile, institutionId } = useAuth();
-  
+
   // Selection States
   const [courses, setCourses] = useState<any[]>([]);
-  const [selectedCourse, setSelectedCourse] = useState<string>('');
+  const [selectedCourseId, setSelectedCourseId] = useState<string>('');
+  const [selectedCourseName, setSelectedCourseName] = useState<string>('');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Data States
-  const [students, setStudents] = useState<any[]>([]);
-  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [students, setStudents] = useState<StudentSummary[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [allAttendanceRecords, setAllAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [teachers, setTeachers] = useState<TeacherSummary[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Stats
-  const [stats, setStats] = useState({ present: 0, absent: 0, late: 0 });
+  const [toast, setToast] = useState<ToastState>(null);
+  const [filters, setFilters] = useState({
+    studentId: '',
+    courseId: '',
+    teacherId: '',
+    startDate: '',
+    endDate: '',
+  });
 
   useEffect(() => {
+    if (!institutionId) return;
     fetchCourses();
+    fetchTeachers();
+    fetchAttendanceHistory();
   }, [profile, institutionId]);
 
   useEffect(() => {
-    if (selectedCourse) {
+    if (selectedCourseId) {
       fetchStudentsAndAttendance();
     }
-  }, [selectedCourse, selectedDate]);
+  }, [selectedCourseId, selectedDate]);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'warning') => {
+    setToast({ message, type });
+    window.setTimeout(() => setToast(null), 4000);
+  };
 
   const fetchCourses = async () => {
     if (!institutionId) return;
@@ -43,59 +61,81 @@ export function Attendance() {
       setCourses(list);
       if (profile?.role === 'student') {
         const enrollments = await cfApi.listEnrollments(institutionId, undefined, profile.uid);
-        const enrolledCourseIds = new Set(enrollments.map((e: any) => e.course_id));
+        const enrolledCourseIds = new Set(enrollments.map((e: any) => e.course_id || e.courseId));
         const studentCourses = list.filter((course: any) => enrolledCourseIds.has(course.id));
         setCourses(studentCourses);
         if (studentCourses.length > 0) {
-          setSelectedCourse(studentCourses[0].course_name || studentCourses[0].title);
+          setSelectedCourseId(studentCourses[0].id);
+          setSelectedCourseName(studentCourses[0].course_name || studentCourses[0].title || 'Course');
         }
         return;
       }
       if (list.length > 0) {
-        setSelectedCourse(list[0].course_name || list[0].title);
+        setSelectedCourseId(list[0].id);
+        setSelectedCourseName(list[0].course_name || list[0].title || 'Course');
       }
     } catch (err) {
-      console.error("Fetch courses failed:", err);
+      console.error('Fetch courses failed:', err);
+      showToast('Unable to load courses.', 'error');
+    }
+  };
+
+  const fetchTeachers = async () => {
+    if (!institutionId) return;
+    try {
+      const result = await cfApi.listTeachers(institutionId, { pagination: { limit: 200, offset: 0 } });
+      setTeachers(result.results || []);
+    } catch (err) {
+      console.error('Fetch teachers failed:', err);
+    }
+  };
+
+  const fetchAttendanceHistory = async () => {
+    if (!institutionId) return;
+    try {
+      const allRecords = await cfApi.listAttendanceRecords(institutionId);
+      setAllAttendanceRecords(allRecords || []);
+    } catch (err) {
+      console.error('Failed to load attendance history:', err);
     }
   };
 
   const fetchStudentsAndAttendance = async () => {
-    if (!institutionId || !selectedCourse) return;
+    if (!institutionId || !selectedCourseId) return;
     setLoading(true);
     try {
-      const courseObj = courses.find(c => (c.course_name || c.title) === selectedCourse);
-      const courseId = courseObj?.id;
-      if (!courseId) return;
-
-      const enrollments = await cfApi.listEnrollments(institutionId, courseId);
-      const studentList = enrollments.map((e: any) => ({
-        id: e.student_id,
-        fullName: e.student_name,
-        email: e.student_email
-      }));
-      setStudents(studentList);
+      const studentResponse = await cfApi.listStudents(institutionId, {
+        courseId: selectedCourseId,
+        pagination: { limit: 200, offset: 0 },
+      });
+      const studentResults = studentResponse.results || [];
+      setStudents(
+        studentResults.sort((a, b) =>
+          String(a.fullName || a.full_name || '').localeCompare(String(b.fullName || b.full_name || '')),
+        ),
+      );
 
       const allRecords = await cfApi.listAttendanceRecords(institutionId);
-      const filteredRecords = allRecords
-        .filter((r: any) => (r.course_id === courseId || r.courseId === courseId))
-        .filter((r: any) => {
-          const recordDate = (r.created_at || r.marked_at || '').toString().slice(0, 10);
+      const filteredRecords = (allRecords || [])
+        .filter((r) => String(r.course_id || r.courseId || '') === selectedCourseId)
+        .filter((r) => {
+          const recordDate = String(r.created_at || r.marked_at || '').slice(0, 10);
           return recordDate === selectedDate;
         });
 
       if (profile?.role === 'student') {
-        const studentRecords = allRecords
-          .filter((r: any) => r.student_id === profile.uid || r.studentId === profile.uid)
-          .map((r: any) => ({
+        const studentRecords = (allRecords || [])
+          .filter((r) => r.student_id === profile.uid || r.studentId === profile.uid)
+          .map((r) => ({
             ...r,
-            date: (r.created_at || r.marked_at || new Date().toISOString()).toString().slice(0, 10),
-            course: r.course_name || r.courseName || selectedCourse,
+            date: String(r.created_at || r.marked_at || new Date().toISOString()).slice(0, 10),
+            course: r.course_name || r.courseName || selectedCourseName,
           }));
-        const studentDateRecords = studentRecords.filter((record: any) => record.date === selectedDate);
+        const studentDateRecords = studentRecords.filter((record) => record.date === selectedDate);
         const total = studentDateRecords.length;
-        const present = studentDateRecords.filter((record: any) => record.status === 'present').length;
-        const absent = studentDateRecords.filter((record: any) => record.status === 'absent').length;
-        const late = studentDateRecords.filter((record: any) => record.status === 'late').length;
+        const present = studentDateRecords.filter((record) => record.status === 'present').length;
+        const absent = studentDateRecords.filter((record) => record.status === 'absent').length;
+        const late = studentDateRecords.filter((record) => record.status === 'late').length;
         setAttendanceRecords(studentDateRecords);
         setStats({
           present: total > 0 ? Math.round((present / total) * 100) : 0,
@@ -106,20 +146,20 @@ export function Attendance() {
       }
 
       setAttendanceRecords(filteredRecords);
-
       if (filteredRecords.length > 0) {
-        const pres = filteredRecords.filter((a: any) => a.status === 'present').length;
-        const abs = filteredRecords.filter((a: any) => a.status === 'absent').length;
-        const lat = filteredRecords.filter((a: any) => a.status === 'late').length;
+        const pres = filteredRecords.filter((a) => a.status === 'present').length;
+        const abs = filteredRecords.filter((a) => a.status === 'absent').length;
+        const lat = filteredRecords.filter((a) => a.status === 'late').length;
         const total = filteredRecords.length;
         setStats({
           present: Math.round((pres / total) * 100),
           absent: Math.round((abs / total) * 100),
-          late: Math.round((lat / total) * 100)
+          late: Math.round((lat / total) * 100),
         });
       }
     } catch (err) {
-      console.error("Attendance data fetch failed:", err);
+      console.error('Attendance data fetch failed:', err);
+      showToast('Failed to load attendance data.', 'error');
     } finally {
       setLoading(false);
     }
@@ -127,29 +167,43 @@ export function Attendance() {
 
   const handleMarkStatus = async (studentId: string, nextStatus: 'present' | 'absent' | 'late') => {
     try {
-      const courseObj = courses.find(c => (c.course_name || c.title) === selectedCourse);
-      const courseId = courseObj?.id;
-      if (!courseId || !institutionId) return;
-
-      // In D1, we might need a session_id. For now, assuming direct mark or simple schema.
-      // Assuming cfApi.markAttendance handles it.
-      await cfApi.markAttendance(institutionId, courseId, studentId, nextStatus);
-
-      // Update local state
-      setAttendanceRecords(prev => {
-        const idx = prev.findIndex(r => (r.student_id === studentId || r.studentId === studentId));
+      if (!institutionId || !selectedCourseId) return;
+      await cfApi.markAttendance(institutionId, selectedCourseId, studentId, nextStatus);
+      setAttendanceRecords((prev) => {
+        const idx = prev.findIndex((r) => r.student_id === studentId || r.studentId === studentId);
         if (idx > -1) {
           const next = [...prev];
-          next[idx] = { ...next[idx], status: nextStatus };
+          next[idx] = { ...next[idx], status: nextStatus, marked_at: new Date().toISOString() };
           return next;
-        } else {
-          return [...prev, { student_id: studentId, status: nextStatus, created_at: new Date().toISOString() }];
         }
+        return [...prev, { student_id: studentId, status: nextStatus, marked_at: new Date().toISOString() } as AttendanceRecord];
       });
+      showToast('Attendance marked successfully.', 'success');
+      fetchAttendanceHistory();
     } catch (err) {
-      console.error("Failed to mark attendance:", err);
+      console.error('Failed to mark attendance:', err);
+      showToast('Unable to save attendance. Try again.', 'error');
     }
   };
+
+  const handleFilterChange = (field: string, value: string) => {
+    setFilters((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const clearFilters = () => {
+    setFilters({ studentId: '', courseId: '', teacherId: '', startDate: '', endDate: '' });
+  };
+
+  const selectedCourse = useMemo(
+    () => courses.find((c) => c.id === selectedCourseId) || null,
+    [courses, selectedCourseId],
+  );
+
+  useEffect(() => {
+    if (selectedCourse) {
+      setSelectedCourseName(selectedCourse.course_name || selectedCourse.title || 'Course');
+    }
+  }, [selectedCourse]);
 
   if (profile?.role === 'student') {
     return (
@@ -160,10 +214,18 @@ export function Attendance() {
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1">
-             <AttendanceAnalytics stats={{ present: 92, absent: 5, late: 3 }} selectedCourseName="Overall" />
+            <AttendanceAnalytics stats={stats} selectedCourseName="Overall" />
           </div>
           <div className="lg:col-span-2">
-            <AttendanceReport history={attendanceRecords} />
+            <AttendanceReport
+              history={attendanceRecords}
+              students={students}
+              courses={courses}
+              teachers={teachers}
+              filters={filters}
+              onFilterChange={handleFilterChange}
+              onClearFilters={clearFilters}
+            />
           </div>
         </div>
       </div>
@@ -171,13 +233,24 @@ export function Attendance() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="relative p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 rounded-2xl p-4 shadow-lg text-sm font-medium ${
+          toast.type === 'success'
+            ? 'bg-emerald-50 text-emerald-700'
+            : toast.type === 'warning'
+            ? 'bg-yellow-50 text-yellow-700'
+            : 'bg-red-50 text-red-700'
+        }`}>
+          {toast.message}
+        </div>
+      )}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Attendance Tracker</h1>
           <p className="text-gray-500 mt-1 font-medium text-sm">Record and audit student classroom presence.</p>
         </div>
-        <input 
+        <input
           type="date"
           value={selectedDate}
           onChange={(e) => setSelectedDate(e.target.value)}
@@ -187,33 +260,45 @@ export function Attendance() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
-          <Card title="Select Course Syllabus">
+          <Card title="Select Course">
             <div className="space-y-2 mt-4">
-              {courses.map((c) => (
+              {courses.map((course) => (
                 <div
-                  key={c.id}
-                  onClick={() => setSelectedCourse(c.course_name || c.title)}
+                  key={course.id}
+                  onClick={() => {
+                    setSelectedCourseId(course.id);
+                    setSelectedCourseName(course.course_name || course.title || 'Course');
+                  }}
                   className={`p-4 rounded-2xl border cursor-pointer transition-all ${
-                    selectedCourse === (c.course_name || c.title) ? 'border-black bg-gray-50 shadow-sm' : 'border-gray-100 hover:border-gray-200'
+                    selectedCourseId === course.id ? 'border-black bg-gray-50 shadow-sm' : 'border-gray-100 hover:border-gray-200'
                   }`}
                 >
-                  <p className="font-bold text-sm text-gray-900">{c.course_name || c.title}</p>
+                  <p className="font-bold text-sm text-gray-900">{course.course_name || course.title}</p>
                 </div>
               ))}
             </div>
           </Card>
-          <AttendanceAnalytics stats={stats} selectedCourseName={selectedCourse} />
+          <AttendanceAnalytics stats={stats} selectedCourseName={selectedCourseName || 'Course'} />
         </div>
 
-        <div className="lg:col-span-2">
-          <AttendanceSession 
+        <div className="lg:col-span-2 space-y-6">
+          <AttendanceSession
             students={students}
             attendanceRecords={attendanceRecords}
             onMark={handleMarkStatus}
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
             loading={loading}
-            selectedCourseName={selectedCourse}
+            selectedCourseName={selectedCourseName}
+          />
+          <AttendanceReport
+            history={allAttendanceRecords}
+            students={students}
+            courses={courses}
+            teachers={teachers}
+            filters={filters}
+            onFilterChange={handleFilterChange}
+            onClearFilters={clearFilters}
           />
         </div>
       </div>
