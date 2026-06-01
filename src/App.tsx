@@ -3,6 +3,8 @@ import { useAuth, setActiveInstitutionId } from './hooks/useAuth';
 import { Sidebar } from './components/layout/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { CourseList } from './components/courses/CourseList';
+import { CourseEnrollment } from './components/courses/CourseEnrollment';
+import { CourseAnalytics } from './components/courses/CourseAnalytics';
 import { Announcements } from './components/Announcements';
 import { Financials } from './components/Financials';
 import { StudentManagement } from './components/StudentManagement';
@@ -20,6 +22,7 @@ import { Certificates } from './components/Certificates';
 import { ContentLibrary } from './components/ContentLibrary';
 import { ContentManagement } from './components/ContentManagement';
 import { CourseSyllabus } from './components/courses/CourseSyllabus';
+import { CourseMaterials } from './components/courses/CourseMaterials';
 import { ScheduleCalendar } from './components/ScheduleCalendar';
 import { SystemSettings } from './components/SystemSettings';
 import { SystemMonitoring } from './components/SystemMonitoring';
@@ -358,6 +361,9 @@ export default function App() {
                         <TeacherManagement activeTab={activeTab === 'teachers' ? 'teachers/all' : activeTab} />
                       ) : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab === 'users/roles' || activeTab === 'users/permissions') return isOwner ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'courses/materials') return <CourseMaterials />;
+                      if (activeTab === 'courses/enrollment') return <CourseEnrollment />;
+                      if (activeTab === 'courses/analytics') return <CourseAnalytics />;
                       if (activeTab === 'courses' || activeTab.startsWith('courses/')) return <CourseList activeTab={activeTab} />;
                       if (activeTab === 'assessment' || activeTab.startsWith('assignments/')) return <Assessment initialMode={activeTab === 'assessment' ? 'assignments/all' : activeTab} />;
                       if (activeTab === 'content/syllabus') return <CourseSyllabus />;

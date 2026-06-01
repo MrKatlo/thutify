@@ -10,6 +10,7 @@ export function CourseSyllabus() {
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
+  const [modulesPreview, setModulesPreview] = useState<Record<string, any[] | null>>({});
 
   const visibleCourses = courses;
 
@@ -88,13 +89,58 @@ export function CourseSyllabus() {
                 <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="space-y-1 text-sm text-gray-500">
                     <p>Teacher: {course.teacher_id ? course.teacher_id : 'Unassigned'}</p>
+                    {course.syllabus && (
+                      <p className="text-xs text-gray-400 mt-1 line-clamp-2">{String(course.syllabus).slice(0, 180)}</p>
+                    )}
                     <p>Status: <span className="font-bold text-gray-900 capitalize">{course.status || 'draft'}</span></p>
                   </div>
-                  <Button onClick={() => setSelectedCourse(course)} className="bg-black text-white hover:bg-gray-800 gap-2">
-                    Open Syllabus
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button onClick={async () => {
+                      try {
+                        const full = await cfApi.getCourse(course.id);
+                        setSelectedCourse(full || course);
+                      } catch (e) {
+                        console.error('Failed loading full course', e);
+                        setSelectedCourse(course);
+                      }
+                    }} className="bg-black text-white hover:bg-gray-800 gap-2">
+                      Open Syllabus
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                    <Button onClick={async () => {
+                      if (modulesPreview[course.id]) {
+                        setModulesPreview((prev) => ({ ...prev, [course.id]: null }));
+                        return;
+                      }
+                      try {
+                        const full = await cfApi.getCourse(course.id);
+                        setModulesPreview((prev) => ({ ...prev, [course.id]: full.modules || [] }));
+                      } catch (e) {
+                        console.error('Failed to load modules preview', e);
+                        setModulesPreview((prev) => ({ ...prev, [course.id]: [] }));
+                      }
+                    }} className="bg-white border border-gray-200 hover:bg-gray-50 gap-2">
+                      Preview Structure
+                    </Button>
+                  </div>
                 </div>
+                {modulesPreview[course.id] && (
+                  <div className="mt-4 w-full">
+                    {(modulesPreview[course.id] || []).map((m: any, mi: number) => (
+                      <div key={m.id} className="border-t border-gray-100 pt-3">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-bold">{mi + 1}. {m.title}</div>
+                          <div className="text-xs text-gray-400">{(m.lessons || []).length} lessons</div>
+                        </div>
+                        <div className="mt-2 ml-4 space-y-1 text-sm">
+                          {(m.lessons || []).slice(0,6).map((l: any) => (
+                            <button key={l.id} onClick={async () => { const full = await cfApi.getCourse(course.id); setSelectedCourse(full || course); }} className="text-left text-xs text-gray-600 hover:text-black">• {l.title}</button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

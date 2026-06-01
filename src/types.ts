@@ -670,9 +670,16 @@ export interface Material {
   id: string;
   institutionId: string;
   institution_id?: string;
+  courseId?: string | null;
+  course_id?: string | null;
+  moduleId?: string | null;
+  module_id?: string | null;
+  lessonId?: string | null;
+  lesson_id?: string | null;
+  visibility?: 'course' | 'module' | 'lesson' | 'institution';
   name: string;
   title?: string;
-  type: 'PDF' | 'Video' | 'Document' | 'Image' | 'Slides';
+  type: 'PDF' | 'Video' | 'Document' | 'Image' | 'Slides' | 'Link';
   file_type?: string;
   size: string;
   file_size?: number;

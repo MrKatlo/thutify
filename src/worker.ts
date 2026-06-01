@@ -2164,16 +2164,79 @@ async function listNotificationsForUser(db: D1Database, institutionId: string, u
   );
 }
 
-async function listMaterialsForInstitution(db: D1Database, institutionId: string) {
+async function getUserRoleInInstitution(db: D1Database, institutionId: string, userId: string): Promise<string | null> {
+  const row = await dbFirst<Row>(
+    db,
+    'SELECT role FROM institution_users WHERE institution_id = ? AND user_id = ? AND status = ? LIMIT 1',
+    [institutionId, userId, 'active'],
+  );
+  return row ? (row.role as string | null) : null;
+}
+
+async function getVisibleCoursesForUser(db: D1Database, institutionId: string, userId: string, role: string | null): Promise<string[]> {
+  if (role === 'admin' || role === 'owner') {
+    // Admin sees all courses
+    const rows = await dbAll<Row>(
+      db,
+      'SELECT id FROM courses WHERE institution_id = ? ORDER BY id',
+      [institutionId],
+    );
+    return rows.map((r) => String(r.id || ''));
+  }
+  if (role === 'teacher') {
+    // Teacher sees courses they teach
+    const rows = await dbAll<Row>(
+      db,
+      'SELECT id FROM courses WHERE institution_id = ? AND teacher_id = ? ORDER BY id',
+      [institutionId, userId],
+    );
+    return rows.map((r) => String(r.id || ''));
+  }
+  if (role === 'student') {
+    // Student sees courses they're enrolled in
+    const rows = await dbAll<Row>(
+      db,
+      'SELECT DISTINCT course_id FROM enrollments WHERE institution_id = ? AND student_id = ? ORDER BY course_id',
+      [institutionId, userId],
+    );
+    return rows.map((r) => String(r.course_id || ''));
+  }
+  return [];
+}
+
+async function listMaterialsForUser(
+  db: D1Database,
+  institutionId: string,
+  userId: string,
+  role: string | null,
+): Promise<Row[]> {
+  const visibleCourses = await getVisibleCoursesForUser(db, institutionId, userId, role);
+  if (visibleCourses.length === 0) {
+    return dbAll<Row>(
+      db,
+      `SELECT *
+       FROM content_library
+       WHERE institution_id = ?
+         AND course_id IS NULL
+       ORDER BY created_at DESC`,
+      [institutionId],
+    );
+  }
+
+  const placeholders = visibleCourses.map(() => '?').join(',');
   const rows = await dbAll<Row>(
     db,
     `SELECT *
      FROM content_library
-     WHERE institution_id = ?
+     WHERE institution_id = ? 
+       AND (course_id IS NULL OR course_id IN (${placeholders}))
      ORDER BY created_at DESC`,
-    [institutionId],
+    [institutionId, ...visibleCourses],
   );
+  return rows;
+}
 
+function formatMaterials(rows: Row[]): Row[] {
   return rows.map((row): Row => ({
     ...row,
     name: row.title,
@@ -2195,6 +2258,19 @@ async function listMaterialsForInstitution(db: D1Database, institutionId: string
       (row.download_url as string | null) ||
       ((row.r2_key as string | null) ? publicObjectUrl(String(row.r2_key)) : null),
   }));
+}
+
+async function listMaterialsForInstitution(db: D1Database, institutionId: string) {
+  const rows = await dbAll<Row>(
+    db,
+    `SELECT *
+     FROM content_library
+     WHERE institution_id = ?
+     ORDER BY created_at DESC`,
+    [institutionId],
+  );
+
+  return formatMaterials(rows);
 }
 
 async function createStorageObject(
@@ -5991,7 +6067,11 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   app.get('/api/institutions/:id/materials', async (context) => {
-    return context.json(await listMaterialsForInstitution(context.env.DB, context.req.param('id')));
+    const verified = context.get('user');
+    const institutionId = context.req.param('id');
+    const role = await getUserRoleInInstitution(context.env.DB, institutionId, verified.uid);
+    const materials = await listMaterialsForUser(context.env.DB, institutionId, verified.uid, role);
+    return context.json(formatMaterials(materials));
   });
 
   app.post('/api/institutions/:id/materials', async (context) => {
@@ -6000,11 +6080,16 @@ export function createApp(options: CreateAppOptions = {}) {
     const materialId = newId();
     const fileType = normalizeFileType(body.type || body.file_type);
     const fileSize = typeof body.file_size === 'number' ? body.file_size : Number(body.file_size) || null;
+    const courseId = body.course_id || body.courseId || null;
+    const moduleId = body.module_id || body.moduleId || null;
+    const lessonId = body.lesson_id || body.lessonId || null;
+    const visibility = body.visibility || (courseId ? 'course' : 'institution');
+
     await dbRun(
       context.env.DB,
       `INSERT INTO content_library
-       (id, institution_id, title, description, r2_key, download_url, file_type, file_size, category, download_count, uploader_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+       (id, institution_id, title, description, r2_key, download_url, file_type, file_size, category, download_count, uploader_id, created_at, course_id, module_id, lesson_id, visibility)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
       [
         materialId,
         context.req.param('id'),
@@ -6017,6 +6102,10 @@ export function createApp(options: CreateAppOptions = {}) {
         String(body.category || 'General'),
         verified.uid,
         nowIso(),
+        courseId,
+        moduleId,
+        lessonId,
+        visibility,
       ],
     );
     return context.json((await listMaterialsForInstitution(context.env.DB, context.req.param('id'))).find((material) => material.id === materialId) || null, 201);
@@ -6040,6 +6129,30 @@ export function createApp(options: CreateAppOptions = {}) {
     );
     const material = await dbFirst<Row>(context.env.DB, 'SELECT * FROM content_library WHERE id = ? LIMIT 1', [context.req.param('materialId')]);
     return context.json(material);
+  });
+
+  // Get materials for a specific course
+  app.get('/api/institutions/:id/courses/:courseId/materials', async (context) => {
+    const verified = context.get('user');
+    const institutionId = context.req.param('id');
+    const courseId = context.req.param('courseId');
+    const role = await getUserRoleInInstitution(context.env.DB, institutionId, verified.uid);
+    const visibleCourses = await getVisibleCoursesForUser(context.env.DB, institutionId, verified.uid, role);
+    
+    // Check if user can see this course's materials
+    if (!visibleCourses.includes(courseId) && role !== 'admin' && role !== 'owner') {
+      return context.json({ error: 'Access denied' }, 403);
+    }
+
+    const rows = await dbAll<Row>(
+      context.env.DB,
+      `SELECT *
+       FROM content_library
+       WHERE institution_id = ? AND (course_id = ? OR course_id IS NULL)
+       ORDER BY created_at DESC`,
+      [institutionId, courseId],
+    );
+    return context.json(formatMaterials(rows));
   });
 
   app.post('/api/storage/upload', async (context) => {
@@ -6127,6 +6240,135 @@ export function createApp(options: CreateAppOptions = {}) {
     return context.json({
       rate: Math.round((present / total) * 100),
     });
+  });
+
+  // Per-course analytics endpoint
+  app.get('/api/institutions/:id/reports/course/:courseId', async (context) => {
+    const institutionId = context.req.param('id');
+    const courseId = context.req.param('courseId');
+
+    // Enrollments
+    const enrollments = await listEnrollmentsForInstitution(context.env.DB, institutionId, courseId);
+    const totalEnrolled = enrollments.length;
+    const activeCount = enrollments.filter(e => String(e.status || '') === 'active').length;
+    const completionCount = enrollments.filter(e => String(e.status || '') === 'completed').length;
+
+    // Attendance sessions and records for this course
+    const sessions = await listAttendanceSessions(context.env.DB, courseId).catch(() => []);
+    // sessions may include present_count/total_count; fall back to aggregating attendance records
+    let attendancePresent = 0;
+    let attendanceTotal = 0;
+    if (Array.isArray(sessions) && sessions.length > 0) {
+      for (const s of sessions) {
+        attendancePresent += Number(s.present_count || s.present || 0);
+        attendanceTotal += Number(s.total_count || s.total || 0);
+      }
+    } else {
+      const allRecords = await listAttendanceRecords(context.env.DB, institutionId);
+      const courseRecords = allRecords.filter(r => String(r.course_id || r.courseId || '') === courseId);
+      attendancePresent = courseRecords.filter(r => String(r.status || '') === 'present').length;
+      attendanceTotal = courseRecords.length;
+    }
+
+    const attendanceRate = attendanceTotal === 0 ? 0 : Math.round((attendancePresent / attendanceTotal) * 100);
+
+    // Lesson progress: completed lessons for course
+    const lessonProgressRows = await dbAll(context.env.DB, 'SELECT * FROM lesson_progress WHERE institution_id = ? AND course_id = ?', [institutionId, courseId]).catch(() => []);
+    const totalLessonProgress = lessonProgressRows.length;
+    const completedLessonProgress = lessonProgressRows.filter((r: any) => r.completed === 1 || r.completed === '1' || r.completed === true).length;
+    const courseCompletionRate = totalLessonProgress === 0 ? 0 : Math.round((completedLessonProgress / totalLessonProgress) * 100);
+
+    // Materials downloads
+    const materials = await listMaterialsForInstitution(context.env.DB, institutionId).catch(() => []);
+    const courseMaterials = materials.filter((m: any) => String(m.course_id || m.courseId || '') === courseId);
+    const totalDownloads = courseMaterials.reduce((sum: number, m: any) => sum + Number(m.download_count || m.downloads || 0), 0);
+
+    // Assignments & submissions
+    const assignments = await dbAll(context.env.DB, 'SELECT * FROM assignments WHERE institution_id = ? AND course_id = ?', [institutionId, courseId]).catch(() => []);
+    const assignmentIds = assignments.map((a: any) => String(a.id || a.assignmentId || ''));
+    const submissions = assignmentIds.length > 0 ? await dbAll(context.env.DB, `SELECT * FROM submissions WHERE assignment_id IN (${assignmentIds.map(() => '?').join(',')})`, assignmentIds).catch(() => []) : [];
+
+    // Teacher activity: number of assignments created / graded
+    const teacherActivity = {} as Record<string, any>;
+    for (const a of assignments) {
+      const teacherId = String(a.teacher_id || a.teacherId || 'unknown');
+      teacherActivity[teacherId] = teacherActivity[teacherId] || { assignments: 0, graded: 0 };
+      teacherActivity[teacherId].assignments += 1;
+    }
+    for (const s of submissions) {
+      const grader = String(s.graded_by || s.gradedBy || '');
+      if (grader) {
+        teacherActivity[grader] = teacherActivity[grader] || { assignments: 0, graded: 0 };
+        teacherActivity[grader].graded += 1;
+      }
+    }
+
+    return context.json({
+      totalEnrolled,
+      activeCount,
+      completionCount,
+      attendanceRate,
+      courseCompletionRate,
+      lessonProgress: { total: totalLessonProgress, completed: completedLessonProgress },
+      totalDownloads,
+      assignments: { count: assignments.length },
+      submissions: { count: submissions.length },
+      teacherActivity,
+      enrollments,
+      materials: courseMaterials,
+    });
+  });
+
+  // Increment lesson view counter (creates table if missing)
+  app.post('/api/institutions/:id/lessons/:lessonId/view', async (context) => {
+    const institutionId = context.req.param('id');
+    const lessonId = context.req.param('lessonId');
+    const verified = context.get('user');
+
+    // ensure table exists
+    await dbRun(
+      context.env.DB,
+      `CREATE TABLE IF NOT EXISTS lesson_view_counts (
+        id TEXT PRIMARY KEY,
+        institution_id TEXT NOT NULL,
+        lesson_id TEXT NOT NULL,
+        total_views INTEGER DEFAULT 0,
+        updated_at TEXT
+      )`,
+      [],
+    );
+
+    // upsert increment
+    await dbRun(
+      context.env.DB,
+      `INSERT INTO lesson_view_counts (id, institution_id, lesson_id, total_views, updated_at)
+       VALUES (?, ?, ?, 1, ?)
+       ON CONFLICT(lesson_id, institution_id) DO UPDATE SET
+         total_views = COALESCE(total_views, 0) + 1,
+         updated_at = ?`,
+      [newId(), institutionId, lessonId, nowIso(), nowIso()],
+    );
+
+    // optional: record viewer in a lightweight log
+    try {
+      await dbRun(
+        context.env.DB,
+        `CREATE TABLE IF NOT EXISTS lesson_view_log (
+          id TEXT PRIMARY KEY,
+          institution_id TEXT,
+          lesson_id TEXT,
+          viewer_id TEXT,
+          viewed_at TEXT
+        )`,
+        [],
+      );
+      await dbRun(context.env.DB, `INSERT INTO lesson_view_log (id, institution_id, lesson_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?, ?)`, [newId(), institutionId, lessonId, verified?.uid || null, nowIso()]);
+    } catch (e) {
+      // non-fatal
+    }
+
+    const row = await dbFirst<Row>(context.env.DB, 'SELECT * FROM lesson_view_counts WHERE institution_id = ? AND lesson_id = ? LIMIT 1', [institutionId, lessonId]);
+    return context.json({ lessonId, totalViews: Number(row?.total_views || 0) });
   });
 
   app.notFound((context) => context.json({ error: 'Route not found' }, 404));

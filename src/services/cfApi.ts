@@ -1005,7 +1005,14 @@ export async function listMaterials(institutionId: string): Promise<Material[]> 
   return apiRequest('GET', `/institutions/${institutionId}/materials`);
 }
 
-export async function createMaterial(institutionId: string, data: Record<string, unknown>): Promise<Material> {
+export async function listMaterialsForCourse(institutionId: string, courseId: string): Promise<Material[]> {
+  return apiRequest('GET', `/institutions/${institutionId}/courses/${courseId}/materials`);
+}
+
+export async function createMaterial(
+  institutionId: string,
+  data: Record<string, unknown> & { course_id?: string; module_id?: string; lesson_id?: string },
+): Promise<Material> {
   return apiRequest('POST', `/institutions/${institutionId}/materials`, {
     body: data,
   });
@@ -1130,6 +1137,14 @@ export async function getEnrollmentReport(institutionId: string): Promise<{
   distribution: Array<{ name: string; students: number }>;
 }> {
   return apiRequest('GET', `/institutions/${institutionId}/reports/enrollment`);
+}
+
+export async function getCourseAnalytics(institutionId: string, courseId: string): Promise<any> {
+  return apiRequest('GET', `/institutions/${institutionId}/reports/course/${courseId}`);
+}
+
+export async function incrementLessonView(institutionId: string, lessonId: string): Promise<{ lessonId: string; totalViews: number }> {
+  return apiRequest('POST', `/institutions/${institutionId}/lessons/${lessonId}/view`);
 }
 
 export async function readRecords(

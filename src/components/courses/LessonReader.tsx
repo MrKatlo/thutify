@@ -1,4 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
+import { useAuth } from '../../hooks/useAuth';
+import * as cfApi from '../../services/cfApi';
 import { Button } from '../ui/Card';
 import { BookOpen, FileText, Clock3, ArrowLeft, Link2, User } from 'lucide-react';
 import type { Course, Lesson } from '../../types';
@@ -59,13 +61,39 @@ function extractResourceLinks(content: string) {
 }
 
 export function LessonReader({ lesson, course, onBack }: LessonReaderProps) {
+  const { institutionId } = useAuth();
+
+  useEffect(() => {
+    if (!institutionId || !lesson?.id) return;
+    try {
+      const key = `lesson_viewed:${lesson.id}`;
+      const raw = sessionStorage.getItem(key);
+      const now = Date.now();
+      const debounceMs = 30 * 1000; // 30 seconds
+      if (raw) {
+        const prev = Number(raw || '0');
+        if (!isNaN(prev) && now - prev < debounceMs) {
+          return;
+        }
+      }
+      sessionStorage.setItem(key, String(now));
+      void cfApi.incrementLessonView(institutionId, lesson.id).catch(() => null);
+    } catch (err) {
+      void cfApi.incrementLessonView(institutionId, lesson.id).catch(() => null);
+    }
+  }, [institutionId, lesson?.id]);
+
   const lessonContent = lesson.content || '';
+  const summaryMatch = lessonContent.match(/^\*\*Lesson Summary:\*\*\s*(.+?)(?:\n{2,}|$)/s);
+  const lessonSummary = summaryMatch?.[1]?.trim() || '';
+  const bodyContent = lessonSummary ? lessonContent.replace(summaryMatch?.[0] || '', '').trim() : lessonContent;
   const authorName = (course.teacherName || course.teacher_name || 'Instructor') as string;
   const createdAt = String(lesson.created_at || lesson.createdAt || '').slice(0, 10);
   const updatedAt = String(lesson.updated_at || lesson.updatedAt || '').slice(0, 10);
-  const resources = useMemo(() => extractResourceLinks(lessonContent), [lessonContent]);
+  const resources = useMemo(() => extractResourceLinks(bodyContent), [bodyContent]);
+  const isVideoResource = Boolean(lesson.videoUrl && lesson.videoUrl.match(/\.(mp4|mov|webm)$/i));
 
-  const htmlContent = useMemo(() => formatMarkdownToHtml(lessonContent), [lessonContent]);
+  const htmlContent = useMemo(() => formatMarkdownToHtml(bodyContent), [bodyContent]);
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8">
@@ -106,6 +134,23 @@ export function LessonReader({ lesson, course, onBack }: LessonReaderProps) {
               <BookOpen className="w-4 h-4" />
               <span>Lesson content</span>
             </div>
+            {lessonSummary ? (
+              <div className="rounded-3xl border border-gray-100 bg-slate-50 p-5 text-sm text-gray-700">
+                <p className="text-xs uppercase tracking-[0.24em] text-gray-400 mb-2">Lesson summary</p>
+                <div className="prose prose-sm max-w-none text-gray-700" dangerouslySetInnerHTML={{ __html: formatMarkdownToHtml(lessonSummary) }} />
+              </div>
+            ) : null}
+            {lesson.videoUrl ? (
+              isVideoResource ? (
+                <div className="rounded-3xl overflow-hidden border border-gray-100 bg-black">
+                  <video controls src={lesson.videoUrl} className="w-full max-h-[420px] bg-black" />
+                </div>
+              ) : (
+                <a href={lesson.videoUrl} target="_blank" rel="noreferrer" className="block rounded-3xl border border-gray-100 bg-slate-50 p-4 text-sm text-indigo-600 hover:bg-slate-100">
+                  Open lesson resource
+                </a>
+              )
+            ) : null}
             <div className="prose prose-sm max-w-none text-gray-700" dangerouslySetInnerHTML={{ __html: htmlContent }} />
           </article>
 

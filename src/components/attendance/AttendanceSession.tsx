@@ -23,17 +23,21 @@ export function AttendanceSession({
   const normalizedSearch = String(searchTerm || '').trim().toLowerCase();
   const filteredStudents = students
     .filter((s) => {
-      const fullName = String(s.fullName || s.name || '').toLowerCase();
+      const firstName = String(s.firstName || s.first_name || '').toLowerCase();
+      const lastName = String(s.lastName || s.last_name || '').toLowerCase();
+      const fullName = String(s.fullName || s.name || `${firstName} ${lastName}`.trim() || '').toLowerCase();
+      const studentId = String(s.studentId || s.student_id || s.id || '').toLowerCase();
       const studentNumber = String(s.studentNumber || s.student_number || '').toLowerCase();
       const email = String(s.email || '').toLowerCase();
       return (
         normalizedSearch === '' ||
-        [fullName, studentNumber, email].some((value) => value.includes(normalizedSearch))
+        [fullName, firstName, lastName, studentId, studentNumber, email].some((value) => value.includes(normalizedSearch))
       );
     })
     .sort((a, b) =>
-      String(a.fullName || a.name || '')
-        .localeCompare(String(b.fullName || b.name || '')),
+      String(a.lastName || a.last_name || a.fullName || a.name || '')
+        .localeCompare(String(b.lastName || b.last_name || b.fullName || b.name || '')) ||
+      String(a.firstName || a.first_name || '').localeCompare(String(b.firstName || b.first_name || '')),
     );
 
   return (
@@ -42,11 +46,23 @@ export function AttendanceSession({
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
           type="text"
-          placeholder="Search by name, ID, or email..."
+          list="attendance-search-options"
+          placeholder="Search by first name, last name, student ID, or email..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none"
         />
+        <datalist id="attendance-search-options">
+          {students.map((student) => {
+            const firstName = student.firstName || student.first_name || '';
+            const lastName = student.lastName || student.last_name || '';
+            const displayName = `${firstName} ${lastName}`.trim() || student.fullName || student.name || '';
+            const studentId = student.studentId || student.student_id || student.id || '';
+            return (
+              <option key={student.id} value={`${displayName} ${studentId}`.trim()} />
+            );
+          })}
+        </datalist>
       </div>
 
       {!loading && (

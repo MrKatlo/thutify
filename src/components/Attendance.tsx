@@ -26,6 +26,7 @@ export function Attendance() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [allAttendanceRecords, setAllAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [teachers, setTeachers] = useState<TeacherSummary[]>([]);
+  const [stats, setStats] = useState({ present: 0, absent: 0, late: 0 });
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<ToastState>(null);
   const [filters, setFilters] = useState({
@@ -110,9 +111,13 @@ export function Attendance() {
       });
       const studentResults = studentResponse.results || [];
       setStudents(
-        studentResults.sort((a, b) =>
-          String(a.fullName || a.full_name || '').localeCompare(String(b.fullName || b.full_name || '')),
-        ),
+        studentResults
+          .slice()
+          .sort((a, b) =>
+            String(a.lastName || a.last_name || a.fullName || a.full_name || '')
+              .localeCompare(String(b.lastName || b.last_name || b.fullName || b.full_name || '')) ||
+            String(a.firstName || a.first_name || '').localeCompare(String(b.firstName || b.first_name || '')),
+          ),
       );
 
       const allRecords = await cfApi.listAttendanceRecords(institutionId);
@@ -156,6 +161,8 @@ export function Attendance() {
           absent: Math.round((abs / total) * 100),
           late: Math.round((lat / total) * 100),
         });
+      } else {
+        setStats({ present: 0, absent: 0, late: 0 });
       }
     } catch (err) {
       console.error('Attendance data fetch failed:', err);

@@ -20,11 +20,13 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
   const [materials, setMaterials] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState(initialCategory);
+  const [courses, setCourses] = useState<any[]>([]);
 
   // Upload States
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadCategory, setUploadCategory] = useState('Syllabi & PDFs');
+  const [selectedCourse, setSelectedCourse] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [previewAsset, setPreviewAsset] = useState<any | null>(null);
@@ -44,6 +46,9 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
 
   useEffect(() => {
     fetchMaterials();
+    if (institutionId) {
+      fetchCourses();
+    }
   }, [institutionId]);
 
   useEffect(() => {
@@ -51,6 +56,16 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
       setShowUploadModal(true);
     }
   }, [autoOpenUpload]);
+
+  const fetchCourses = async () => {
+    if (!institutionId) return;
+    try {
+      const list = await cfApi.listCourses(institutionId);
+      setCourses(list);
+    } catch (err) {
+      console.error("Fetch courses failed:", err);
+    }
+  };
 
   const fetchMaterials = async () => {
     if (!institutionId) return;
@@ -90,20 +105,28 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
       setUploadProgress(70);
       
       // 2. Create material record in D1
-      await cfApi.createMaterial(institutionId, {
+      const extMatch = selectedFile.name.match(/\.([a-z0-9]+)$/i);
+      const ext = extMatch ? extMatch[1].toLowerCase() : '';
+      const isVideo = selectedFile.type.includes('video') || ['mp4', 'mov', 'webm'].includes(ext);
+      const materialPayload: Record<string, unknown> = {
         name: selectedFile.name,
-        type: selectedFile.type.includes('video') ? 'Video' : selectedFile.type.includes('pdf') ? 'PDF' : 'Document',
+        type: isVideo ? 'Video' : selectedFile.type.includes('pdf') ? 'PDF' : 'Document',
+        file_type: isVideo ? 'video' : (selectedFile.type || '').split('/')[0] || 'document',
         size: formatFileSize(selectedFile.size),
         file_size: selectedFile.size,
-        category: uploadCategory,
+        category: isVideo ? 'Lecture Videos' : uploadCategory,
         r2_key: uploadRes.key,
         download_url: uploadRes.url,
-      });
+        course_id: selectedCourse || undefined,
+      };
+
+      await cfApi.createMaterial(institutionId, materialPayload);
 
       setUploadProgress(100);
       toast.success("Material uploaded successfully!");
       setShowUploadModal(false);
       setSelectedFile(null);
+      setSelectedCourse('');
       fetchMaterials();
     } catch (err) {
       console.error("Upload failed:", err);
@@ -152,12 +175,16 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
     window.open(downloadUrl, '_blank');
   };
 
-  const handleDeleteFile = async (fileId: string) => {
-    if (!institutionId) return;
-    if (!confirm("Are you sure?")) return;
+  const handleDeleteFile = (file: any) => {
+    setDeletePendingFile(file);
+  };
+
+  const confirmDeleteFile = async () => {
+    if (!institutionId || !deletePendingFile) return;
     try {
-      await cfApi.deleteMaterial(institutionId, fileId);
+      await cfApi.deleteMaterial(institutionId, deletePendingFile.id);
       toast.success("Material removed.");
+      setDeletePendingFile(null);
       fetchMaterials();
     } catch (err) {
       console.error("Delete material failed:", err);
@@ -282,7 +309,7 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
                       </button>
                       {canManage && (
                         <button 
-                          onClick={() => handleDeleteFile(file.id)}
+                          onClick={() => handleDeleteFile(file)}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-white rounded-lg transition-all"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -298,16 +325,58 @@ export function ContentLibrary({ initialCategory = 'All Files', autoOpenUpload =
       </div>
 
       <AnimatePresence>
+        {deletePendingFile && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setDeletePendingFile(null)} />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative w-full max-w-lg rounded-3xl bg-white p-8 shadow-2xl">
+              <div className="space-y-4">
+                <h3 className="text-xl font-black text-gray-900">Confirm delete</h3>
+                <p className="text-sm text-gray-600">Are you sure you want to remove “{deletePendingFile?.name}”? This action cannot be undone.</p>
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDeletePendingFile(null)}
+                    className="rounded-2xl border border-gray-200 px-4 py-2 text-sm text-gray-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmDeleteFile}
+                    className="rounded-2xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                  >
+                    Delete file
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
         {showUploadModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div onClick={() => !uploading && setShowUploadModal(false)} className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-black text-gray-900">Upload Asset</h3>
-                <button onClick={() => setShowUploadModal(false)} className="text-lg">✕</button>
+                <button onClick={() => {setShowUploadModal(false); setSelectedCourse('');}} className="text-lg">✕</button>
               </div>
 
               <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Course (Optional)</label>
+                  <select 
+                    value={selectedCourse}
+                    onChange={(e) => setSelectedCourse(e.target.value)}
+                    disabled={uploading}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black text-sm font-bold"
+                  >
+                    <option value="">Select a course...</option>
+                    {courses.map((course) => (
+                      <option key={course.id} value={course.id}>{course.title}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Category</label>
                   <select 

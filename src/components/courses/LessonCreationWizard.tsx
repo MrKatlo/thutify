@@ -169,29 +169,39 @@ export function LessonCreationWizard({
     try {
       const uploadResult = await cfApi.uploadFile(file);
       const fileType = normalizeResourceType(file.type, file.name);
+      const extMatch = file.name.match(/\.([a-z0-9]+)$/i);
+      const ext = extMatch ? extMatch[1].toLowerCase() : '';
+      const isVideo = file.type.includes('video') || ['mp4', 'mov', 'webm'].includes(ext);
       const material = await cfApi.createMaterial(institutionId, {
         name: file.name,
         title: file.name,
-        type: fileType,
-        file_type: file.type,
+        type: isVideo ? 'Video' : fileType,
+        file_type: isVideo ? 'video' : file.type,
         file_size: file.size,
         downloadUrl: uploadResult.url,
         download_url: uploadResult.url,
-        category: 'Lesson Resource',
+        category: isVideo ? 'Lecture Videos' : 'Lesson Resource',
         description: `Lesson attachment for ${title || 'new lesson'}`,
+        course_id: course.id,
+        module_id: module.id,
       });
 
+      const resourceTitleLabel = resourceTitle.trim() || file.name;
+      const resourceTypeLabel = isVideo ? 'Video' : fileType;
       setResources((current) => [
         ...current,
         {
           id: makeLocalId(),
-          title: file.name,
+          title: resourceTitleLabel,
           url: uploadResult.url,
-          type: fileType,
+          type: resourceTypeLabel,
           source: 'upload',
           materialId: material.id,
         },
       ]);
+      setResourceTitle('');
+      setResourceUrl('');
+      setResourceType('PDF');
       toast.success('Attachment uploaded and added to resources.');
     } catch (error) {
       console.error('Upload failed:', error);

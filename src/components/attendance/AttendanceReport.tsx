@@ -17,8 +17,14 @@ interface AttendanceReportProps {
 }
 
 export function AttendanceReport({ history, students, courses, teachers, filters, onFilterChange, onClearFilters }: AttendanceReportProps) {
-  const studentMap = new Map(students.map((student) => [student.id, student.fullName || student.full_name || student.email]));
-  const teacherMap = new Map(teachers.map((teacher) => [teacher.id, teacher.fullName || teacher.full_name || teacher.email]));
+  const sortedStudents = [...students].sort((a, b) =>
+    String(a.fullName || a.full_name || '').localeCompare(String(b.fullName || b.full_name || '')),
+  );
+  const sortedTeachers = [...teachers].sort((a, b) =>
+    String(a.fullName || a.full_name || '').localeCompare(String(b.fullName || b.full_name || '')),
+  );
+  const studentMap = new Map(sortedStudents.map((student) => [student.id, student.fullName || student.full_name || student.email]));
+  const teacherMap = new Map(sortedTeachers.map((teacher) => [teacher.id, teacher.fullName || teacher.full_name || teacher.email]));
 
   const filteredHistory = history.filter((record) => {
     const recordDate = String(record.created_at || record.marked_at || record.date || '').slice(0, 10);
@@ -41,9 +47,9 @@ export function AttendanceReport({ history, students, courses, teachers, filters
             className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-white text-sm"
           >
             <option value="">All students</option>
-            {students.map((student) => (
+            {sortedStudents.map((student) => (
               <option key={student.id} value={student.id}>
-                {student.fullName || student.full_name || student.studentNumber || student.student_number}
+                {student.fullName || student.full_name || student.studentNumber || student.student_number || student.email}
               </option>
             ))}
           </select>
@@ -71,7 +77,7 @@ export function AttendanceReport({ history, students, courses, teachers, filters
             className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-white text-sm"
           >
             <option value="">All teachers</option>
-            {teachers.map((teacher) => (
+            {sortedTeachers.map((teacher) => (
               <option key={teacher.id} value={teacher.id}>
                 {teacher.fullName || teacher.full_name || teacher.email}
               </option>
