@@ -25,7 +25,7 @@ export interface Env {
   EMAIL?: string;
   APP_URL?: string;
   FIREBASE_SERVICE_ACCOUNT_JSON?: string;
-  coSENDGRID_API_KEY?: string;
+  SENDGRID_API_KEY?: string;
   MJ_APIKEY_PUBLIC?: string;
   MJ_APIKEY_PRIVATE?: string;
   MAILJET_APIKEY_PUBLIC?: string;
@@ -79,11 +79,26 @@ type InvitationDeliveryHandler = (payload: {
   expiresAt: string;
 }) => Promise<InvitationDeliveryResult>;
 
+type TransactionalEmailPayload = {
+  to: string;
+  toName?: string;
+  subject: string;
+  text: string;
+  html: string;
+  fromName?: string;
+};
+
+type TransactionalEmailHandler = (
+  env: Env,
+  payload: TransactionalEmailPayload,
+) => Promise<unknown | null>;
+
 interface CreateAppOptions {
   verifyToken?: TokenVerifier;
   provisionAuthUser?: AuthUserProvisioner;
   updateAuthUserPassword?: AuthUserPasswordUpdater;
   deliverInvitationEmail?: InvitationDeliveryHandler;
+  sendTransactionalEmail?: TransactionalEmailHandler;
 }
 
 type Row = Record<string, unknown>;
@@ -978,17 +993,7 @@ function normalizeBaseUrl(value: string | undefined) {
   return normalized || 'http://localhost:8787';
 }
 
-async function sendTransactionalEmail(
-  env: Env,
-  payload: {
-    to: string;
-    toName?: string;
-    subject: string;
-    text: string;
-    html: string;
-    fromName?: string;
-  },
-) {
+async function sendTransactionalEmail(env: Env, payload: TransactionalEmailPayload) {
   const sendgridKey = String(env.SENDGRID_API_KEY || '').trim();
   const senderEmail = String(env.EMAIL || '').trim();
 
@@ -2656,6 +2661,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const provisionAuthUser = options.provisionAuthUser || createFirebaseEmailPasswordUser;
   const updateAuthUserPassword = options.updateAuthUserPassword || null;
   const deliverInvitationEmail = options.deliverInvitationEmail || sendMockInvitationEmail;
+  const deliverTransactionalEmail = options.sendTransactionalEmail || sendTransactionalEmail;
   const app = new Hono<AppBindings>();
 
   app.use('*', async (context, next) => {
@@ -2797,7 +2803,7 @@ export function createApp(options: CreateAppOptions = {}) {
       }
     }
     const resetUrl = new URL(resetPath, appBaseUrl).toString();
-    const emailResult = await sendTransactionalEmail(context.env, {
+    const emailResult = await deliverTransactionalEmail(context.env, {
       to: email,
       toName: email,
       subject: 'Reset your Thutify password',
@@ -2871,7 +2877,7 @@ export function createApp(options: CreateAppOptions = {}) {
       [nowIso(), token],
     );
 
-    const emailResult = await sendTransactionalEmail(context.env, {
+    const emailResult = await deliverTransactionalEmail(context.env, {
       to: email,
       toName: email,
       subject: 'Your password has been reset',
@@ -2984,7 +2990,7 @@ export function createApp(options: CreateAppOptions = {}) {
 
       const appBaseUrl = normalizeBaseUrl(context.env.APP_URL);
       const dashboardUrl = new URL(`/${institution?.slug || slug}/login`, appBaseUrl).toString();
-      void sendTransactionalEmail(context.env, {
+      void deliverTransactionalEmail(context.env, {
         to: verified.email,
         toName: body.fullName || verified.name || verified.email,
         subject: `Welcome to ${institution?.name || body.institution.name}`,
@@ -3262,7 +3268,7 @@ export function createApp(options: CreateAppOptions = {}) {
     const applicantEmail = String(body.email || verified.email || '').trim();
     if (applicantEmail) {
       const dashboardUrl = new URL(`/${institution.slug}/login`, normalizeBaseUrl(context.env.APP_URL)).toString();
-      void sendTransactionalEmail(context.env, {
+      void deliverTransactionalEmail(context.env, {
         to: applicantEmail,
         toName: body.fullName || verified.name || applicantEmail,
         subject: `Your application to ${institution.name} is pending`,
@@ -3801,7 +3807,7 @@ export function createApp(options: CreateAppOptions = {}) {
     if (studentInstitution && email) {
       const loginUrl = new URL(`/${studentInstitution.slug}/login`, normalizeBaseUrl(context.env.APP_URL)).toString();
       const temporaryPassword = String(body.temporaryPassword || '').trim();
-      void sendTransactionalEmail(context.env, {
+      void deliverTransactionalEmail(context.env, {
         to: email,
         toName: fullName || email,
         subject: `Welcome to ${studentInstitution.name}`,
@@ -4567,7 +4573,7 @@ export function createApp(options: CreateAppOptions = {}) {
     });
 
     const inviteLoginUrl = new URL(`/${institution.slug}/login?invite=${inviteToken}`, normalizeBaseUrl(context.env.APP_URL)).toString();
-    void sendTransactionalEmail(context.env, {
+    void deliverTransactionalEmail(context.env, {
       to: email,
       toName: fullName || email,
       subject: `Welcome to ${institution.name}`,
@@ -6243,7 +6249,7 @@ export function createApp(options: CreateAppOptions = {}) {
       for (const member of memberRows) {
         const email = String(member.email || '').trim();
         if (!email) continue;
-        void sendTransactionalEmail(context.env, {
+        void deliverTransactionalEmail(context.env, {
           to: email,
           toName: String(member.full_name || email),
           subject: `${instName}: ${announcementTitle}`,
@@ -6894,7 +6900,7 @@ export function createApp(options: CreateAppOptions = {}) {
     const recipient = String(body.to || platformUser.email || verified.email || '').trim();
     if (!recipient) return context.json({ error: 'Recipient email is required' }, 400);
     const instName = String(institution?.name || 'LearnFlow');
-    const result = await sendTransactionalEmail(context.env, {
+    const result = await deliverTransactionalEmail(context.env, {
       to: recipient,
       toName: String(platformUser.fullName || platformUser.full_name || recipient),
       subject: `${instName} — Test Email`,
@@ -6903,7 +6909,13 @@ export function createApp(options: CreateAppOptions = {}) {
       fromName: instName,
     });
     if (!result) {
-      return context.json({ error: 'Email delivery failed. Check SENDGRID_API_KEY and EMAIL env vars.' }, 502);
+      return context.json(
+        {
+          error:
+            'Email delivery failed. Set SENDGRID_API_KEY and EMAIL (or Mailjet keys) in .dev.vars for local dev, or as Wrangler secrets in production.',
+        },
+        502,
+      );
     }
     return context.json({ success: true, to: recipient });
   });

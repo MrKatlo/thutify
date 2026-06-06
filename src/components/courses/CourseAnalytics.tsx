@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { Card, Button } from '../ui/Card';
-import { BookOpen, Users, CheckCircle2, Activity, Download, FileText } from 'lucide-react';
+import { Card } from '../ui/Card';
+import { BookOpen, Users, CheckCircle2, Activity } from 'lucide-react';
 import * as cfApi from '../../services/cfApi';
-import { Course, Enrollment, Material, Assignment, Submission } from '../../types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { Course, Material, Assignment, Submission } from '../../types';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  Cell,
+} from 'recharts';
+
+const CHART_COLORS = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#06b6d4'];
 
 function fmtDate(d?: string | number | null) {
   if (!d) return '';
@@ -13,32 +26,29 @@ function fmtDate(d?: string | number | null) {
 }
 
 export function CourseAnalytics() {
-  const { institutionId, isTeacher, profile } = useAuth();
+  const { institutionId } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
-  const [selectedCourseId, setSelectedCourseId] = useState<string>('');
-  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
-  const [materials, setMaterials] = useState<Material[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [analytics, setAnalytics] = useState<any>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [attendanceSessions, setAttendanceSessions] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(false);
-  const [dateRange, setDateRange] = useState<'7d'|'30d'|'90d'>('30d');
+  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d'>('30d');
 
   useEffect(() => {
     if (!institutionId) return;
     (async () => {
       setLoading(true);
       try {
-        const [cList, mats] = await Promise.all([
-          cfApi.listCourses(institutionId),
-          cfApi.listMaterials(institutionId),
-        ]);
+        const cList = await cfApi.listCourses(institutionId);
         setCourses(cList || []);
-        setMaterials(mats || []);
-        if (cList && cList.length > 0) setSelectedCourseId(cList[0].id);
+        if (cList?.length) setSelectedCourseId(cList[0].id);
       } catch (err) {
-        console.error('Failed loading course analytics base data', err);
-      } finally { setLoading(false); }
+        console.error('Failed loading courses for analytics', err);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [institutionId]);
 
@@ -47,166 +57,177 @@ export function CourseAnalytics() {
     (async () => {
       setLoading(true);
       try {
-        const analytics = await cfApi.getCourseAnalytics(institutionId, selectedCourseId);
-        setEnrollments(analytics.enrollments || []);
-        // merge materials if provided
-        if (analytics.materials) setMaterials((prev) => {
-          const others = prev.filter(m => String(m.course_id || m.courseId || '') !== selectedCourseId);
-          return [...others, ...(analytics.materials || [])];
-        });
-
-        // still fetch assignments and submission lists for charts
-        const assigns = await cfApi.listAssignments(institutionId, selectedCourseId);
+        const [data, assigns, allSubmissions, mats] = await Promise.all([
+          cfApi.getCourseAnalytics(institutionId, selectedCourseId),
+          cfApi.listAssignments(institutionId, selectedCourseId),
+          cfApi.listSubmissions(institutionId),
+          cfApi.listMaterials(institutionId),
+        ]);
+        setAnalytics(data);
         setAssignments(assigns || []);
-        const assignmentIds = (assigns || []).map(a => a.id).filter(Boolean);
-        if (assignmentIds.length > 0) {
-          const allSubmissions = await cfApi.listSubmissions(institutionId);
-          setSubmissions((allSubmissions || []).filter(s => assignmentIds.includes(s.assignment_id || s.assignmentId || '')));
-        } else {
-          setSubmissions([]);
-        }
+        const assignmentIds = (assigns || []).map((a) => a.id).filter(Boolean);
+        setSubmissions(
+          (allSubmissions || []).filter((s) =>
+            assignmentIds.includes(s.assignment_id || s.assignmentId || ''),
+          ),
+        );
+        setMaterials((mats || []).filter((m) => (m.course_id || m.courseId) === selectedCourseId));
       } catch (err) {
-        console.error('Failed loading course analytics details', err);
-      } finally { setLoading(false); }
+        console.error('Failed loading course analytics', err);
+        setAnalytics(null);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [selectedCourseId, institutionId]);
 
-  const materialsForCourse = useMemo(() => materials.filter(m => (m.course_id || m.courseId) === selectedCourseId), [materials, selectedCourseId]);
+  const enrolledCount = analytics?.totalEnrolled ?? analytics?.enrolledCount ?? 0;
+  const completionRate = analytics?.courseCompletionRate ?? analytics?.completionRate ?? 0;
+  const attendanceRate = analytics?.attendanceRate ?? 0;
+  const materialDownloads = analytics?.totalDownloads ?? materials.reduce(
+    (sum, m) => sum + Number(m.download_count || m.downloads || 0),
+    0,
+  );
 
-  // these may be provided by analytics API; fall back to local calculation
-  const enrolledCount = (enrollments && enrollments.length) || 0;
-  const completionRate = (enrollments && enrollments.length) === 0 ? 0 : Math.round((enrollments.filter((e:any) => String(e.status || '') === 'completed').length / Math.max(1, enrollments.length)) * 100);
+  const enrollments = analytics?.enrollments || [];
 
-  // attendance rate: compute from attendanceSessions -> fetch records count present vs total
-  // listAttendanceSessions returns sessions; backend attendance records are institution scoped, so compute present rate by fetching records and filtering by course when needed
-  const attendanceRate = useMemo(() => {
-    if (!attendanceSessions || attendanceSessions.length === 0) return 0;
-    // sessions may include present_count / total_count fields
-    const totals = attendanceSessions.reduce((acc: {present:number; total:number}, s: any) => {
-      const present = Number(s.present_count || s.present || 0);
-      const total = Number(s.total_count || s.total || 0);
-      return { present: acc.present + present, total: acc.total + total };
-    }, { present: 0, total: 0 });
-    if (totals.total === 0) return 0;
-    return Math.round((totals.present / totals.total) * 100);
-  }, [attendanceSessions]);
-
-  const lessonViewsEstimate = useMemo(() => {
-    // try to read from materials or analytics lessonProgress if available
-    return (materialsForCourse.reduce((sum, m) => sum + (Number(m.view_count || m.views || 0) || 0), 0) || 0) || ((enrollments.length && 0) || 0);
-  }, [materialsForCourse, enrollments]);
-
-  const submissionCount = submissions.length;
-  const materialDownloads = materialsForCourse.reduce((sum, m) => sum + (Number(m.download_count || m.downloads || 0) || 0), 0);
-
-  // Prepare enrollment timeline for selected date range
   const timeline = useMemo(() => {
     const days = dateRange === '7d' ? 7 : dateRange === '30d' ? 30 : 90;
     const now = Date.now();
-    const buckets: Record<string, { date:string, enrolled:number }> = {};
+    const buckets: Record<string, { date: string; enrolled: number; submissions: number }> = {};
     for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now - i * 24*60*60*1000);
-      const key = d.toISOString().slice(0,10);
-      buckets[key] = { date: fmtDate(d.toISOString()), enrolled: 0 };
+      const d = new Date(now - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      buckets[key] = { date: fmtDate(d.toISOString()), enrolled: 0, submissions: 0 };
     }
-    enrollments.forEach(e => {
-      const t = new Date(e.enrolledAt || e.enrolled_at || '').toISOString().slice(0,10);
-      if (buckets[t]) buckets[t].enrolled += 1;
+    enrollments.forEach((e: any) => {
+      const key = new Date(e.enrolledAt || e.enrolled_at || '').toISOString().slice(0, 10);
+      if (buckets[key]) buckets[key].enrolled += 1;
+    });
+    submissions.forEach((s) => {
+      const key = new Date(s.created_at || s.createdAt || '').toISOString().slice(0, 10);
+      if (buckets[key]) buckets[key].submissions += 1;
     });
     return Object.values(buckets);
-  }, [enrollments, dateRange]);
+  }, [enrollments, submissions, dateRange]);
+
+  const topMaterials = useMemo(
+    () =>
+      [...materials]
+        .sort((a, b) => Number(b.download_count || b.downloads || 0) - Number(a.download_count || a.downloads || 0))
+        .slice(0, 6)
+        .map((m, i) => ({
+          name: (m.title || m.name || 'File').slice(0, 18),
+          downloads: Number(m.download_count || m.downloads || 0),
+          fill: CHART_COLORS[i % CHART_COLORS.length],
+        })),
+    [materials],
+  );
 
   return (
-    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold">Course Analytics</h1>
-          <p className="text-sm text-gray-500">Analytics per course: enrollments, attendance, completion, resources and assignments.</p>
+          <h1 className="text-2xl font-extrabold text-gray-900">Analytics</h1>
+          <p className="text-sm text-gray-500 mt-1">Live stats from your database.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <select value={selectedCourseId} onChange={e => setSelectedCourseId(e.target.value)} className="px-4 py-2 border rounded-2xl">
-            {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedCourseId}
+            onChange={(e) => setSelectedCourseId(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white"
+          >
+            {courses.map((c) => (
+              <option key={c.id} value={c.id}>{c.title}</option>
+            ))}
           </select>
-          <select value={dateRange} onChange={e => setDateRange(e.target.value as any)} className="px-4 py-2 border rounded-2xl">
-            <option value="7d">Last 7 days</option>
-            <option value="30d">Last 30 days</option>
-            <option value="90d">Last 90 days</option>
+          <select
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value as '7d' | '30d' | '90d')}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white"
+          >
+            <option value="7d">7 days</option>
+            <option value="30d">30 days</option>
+            <option value="90d">90 days</option>
           </select>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="p-4">
-          <div className="flex items-center gap-3 text-blue-600"><BookOpen className="w-5 h-5" /><div className="text-xs uppercase font-bold text-gray-400">Enrolled</div></div>
-          <div className="mt-3 text-3xl font-black">{enrolledCount}</div>
-          <div className="text-sm text-gray-500">Students enrolled in this course</div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3 text-emerald-600"><CheckCircle2 className="w-5 h-5" /><div className="text-xs uppercase font-bold text-gray-400">Completion</div></div>
-          <div className="mt-3 text-3xl font-black">{completionRate}%</div>
-          <div className="text-sm text-gray-500">Students completed the course</div>
-        </Card>
-
-        <Card className="p-4">
-          <div className="flex items-center gap-3 text-sky-600"><Activity className="w-5 h-5" /><div className="text-xs uppercase font-bold text-gray-400">Attendance</div></div>
-          <div className="mt-3 text-3xl font-black">{attendanceRate}%</div>
-          <div className="text-sm text-gray-500">Present across recorded sessions</div>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Enrolled', value: enrolledCount, icon: Users, color: 'text-blue-600' },
+          { label: 'Completion', value: `${completionRate}%`, icon: CheckCircle2, color: 'text-emerald-600' },
+          { label: 'Attendance', value: `${attendanceRate}%`, icon: Activity, color: 'text-violet-600' },
+          { label: 'Downloads', value: materialDownloads, icon: BookOpen, color: 'text-amber-600' },
+        ].map((stat) => (
+          <Card key={stat.label} className="p-4">
+            <div className={`flex items-center gap-2 ${stat.color}`}>
+              <stat.icon className="w-4 h-4" />
+              <span className="text-xs font-semibold text-gray-500">{stat.label}</span>
+            </div>
+            <div className="mt-2 text-2xl font-black text-gray-900">{loading ? '…' : stat.value}</div>
+          </Card>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-4">
-          <h3 className="font-bold">Enrollment timeline</h3>
-          <div style={{ height: 220 }} className="mt-4">
-            <ResponsiveContainer width="100%" height={200}>
+          <h3 className="font-bold text-gray-900">Enrollments</h3>
+          <div className="h-52 mt-3">
+            <ResponsiveContainer width="100%" height="100%">
               <LineChart data={timeline}>
-                <XAxis dataKey="date" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
                 <Tooltip />
-                <Line type="monotone" dataKey="enrolled" stroke="#111827" strokeWidth={2} />
+                <Line type="monotone" dataKey="enrolled" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </Card>
 
         <Card className="p-4">
-          <h3 className="font-bold">Activity summary</h3>
-          <div className="mt-4 space-y-3">
-            <div className="flex items-center justify-between"><div className="text-sm font-semibold">Lesson views (estimate)</div><div className="font-black">{lessonViewsEstimate}</div></div>
-            <div className="flex items-center justify-between"><div className="text-sm font-semibold">Resource downloads</div><div className="font-black">{materialDownloads}</div></div>
-            <div className="flex items-center justify-between"><div className="text-sm font-semibold">Assignment submissions</div><div className="font-black">{submissionCount}</div></div>
-            <div className="flex items-center justify-between"><div className="text-sm font-semibold">Assignments</div><div className="font-black">{assignments.length}</div></div>
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="p-4">
-          <h3 className="font-bold">Submissions over time</h3>
-          <div style={{ height: 220 }} className="mt-4">
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={timeline.map(d => ({ date: d.date, submissions: submissions.filter(s => (new Date(s.created_at || s.createdAt || 0)).toISOString().slice(0,10) === d.date).length }))}>
-                <XAxis dataKey="date" />
+          <h3 className="font-bold text-gray-900">Submissions</h3>
+          <div className="h-52 mt-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={timeline}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
                 <Tooltip />
-                <Bar dataKey="submissions" fill="#111827" />
+                <Bar dataKey="submissions" radius={[6, 6, 0, 0]}>
+                  {timeline.map((_, i) => (
+                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
         </Card>
-
-        <Card className="p-4">
-          <h3 className="font-bold">Top materials</h3>
-          <div className="mt-4 space-y-2">
-            {materialsForCourse.sort((a,b) => (Number(b.download_count||b.downloads||0) - Number(a.download_count||a.downloads||0))).slice(0,6).map(m => (
-              <div key={m.id} className="flex items-center justify-between">
-                <div className="text-sm">{m.title || m.name}</div>
-                <div className="text-sm font-black">{m.download_count || m.downloads || 0}</div>
-              </div>
-            ))}
-            {materialsForCourse.length === 0 && <div className="text-sm text-gray-500">No course materials</div>}
-          </div>
-        </Card>
       </div>
+
+      <Card className="p-4">
+        <h3 className="font-bold text-gray-900 mb-3">Top materials</h3>
+        {topMaterials.length === 0 ? (
+          <p className="text-sm text-gray-500">No downloads yet.</p>
+        ) : (
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={topMaterials} layout="vertical">
+                <XAxis type="number" tick={{ fontSize: 10 }} />
+                <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 10 }} />
+                <Tooltip />
+                <Bar dataKey="downloads" radius={[0, 6, 6, 0]}>
+                  {topMaterials.map((entry) => (
+                    <Cell key={entry.name} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+        <p className="text-xs text-gray-400 mt-2">{assignments.length} assignments · {submissions.length} submissions</p>
+      </Card>
     </div>
   );
 }

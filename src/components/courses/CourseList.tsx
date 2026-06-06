@@ -15,47 +15,29 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { CourseDetail } from './CourseDetail';
 import * as cfApi from '../../services/cfApi';
+import {
+  CURRICULUM_LEVELS,
+  resolveCurriculumLevel,
+  normalizeCurriculumLevel,
+} from '../../lib/curriculum';
 
 interface CourseListProps {
   activeTab?: string;
   setActiveTab?: (tab: string) => void;
 }
 
-const COURSE_VIEW_META: Record<
-  string,
-  { title: string; description: string; emptyTitle: string; emptyDescription: string }
-> = {
-  'courses/all': {
-    title: 'All Courses',
-    description: 'Every course in your institution — draft, published, and archived.',
-    emptyTitle: 'No Courses Found',
-    emptyDescription: 'Get started by creating the first institutional course.',
-  },
-  courses: {
-    title: 'All Courses',
-    description: 'Every course in your institution — draft, published, and archived.',
-    emptyTitle: 'No Courses Found',
-    emptyDescription: 'Get started by creating the first institutional course.',
-  },
-  'courses/published': {
-    title: 'Published Courses',
-    description: 'Active courses that are live for enrollment and student access.',
-    emptyTitle: 'No Published Courses',
-    emptyDescription: 'Publish a draft course or create a new one with active status.',
-  },
-  'courses/drafts': {
-    title: 'Draft Courses',
-    description: 'Courses still being prepared before they go live.',
-    emptyTitle: 'No Draft Courses',
-    emptyDescription: 'Draft courses stay hidden from students until you publish them.',
-  },
-  'courses/archived': {
-    title: 'Archived Courses',
-    description: 'Retired courses kept for records but not shown to new enrollments.',
-    emptyTitle: 'No Archived Courses',
-    emptyDescription: 'Archive old courses from the course editor when they are no longer offered.',
-  },
-};
+function formatShortDate(value?: string | null) {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function statusLabel(status?: string) {
+  if (status === 'active') return 'Live';
+  if (status === 'archived') return 'Archived';
+  return 'Draft';
+}
 
 export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
   const { profile, institutionId, canManageInstitution, isTeacher } = useAuth();
@@ -67,13 +49,7 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
   const [viewingCourse, setViewingCourse] = useState<any | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
-  const filteredCourses = useMemo(() => {
-    if (!activeTab) return courses;
-    if (activeTab === 'courses/published') return courses.filter((c: any) => c.status === 'active');
-    if (activeTab === 'courses/drafts') return courses.filter((c: any) => c.status === 'draft');
-    if (activeTab === 'courses/archived') return courses.filter((c: any) => c.status === 'archived');
-    return courses;
-  }, [courses, activeTab]);
+  const filteredCourses = courses;
 
   // Form state
   const [title, setTitle] = useState('');
@@ -85,9 +61,6 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
 
   const resolvedTab = activeTab || 'courses/all';
   const isCreateView = resolvedTab === 'courses/create';
-  const viewMeta =
-    COURSE_VIEW_META[resolvedTab] ||
-    COURSE_VIEW_META['courses/all'];
 
   const canEditCourse = (course: { teacher_id?: string; teacherId?: string }) => {
     if (canManageInstitution) return true;
@@ -155,7 +128,7 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
         title,
         description,
         teacher_id: assignedTeacherId || undefined,
-        category: category.trim() || undefined,
+        category: normalizeCurriculumLevel(category) || undefined,
         fee: Number(fee),
         status,
       };
@@ -179,7 +152,7 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
     setTitle(course.title);
     setDescription(course.description);
     setAssignedTeacherId(course.teacher_id || '');
-    setCategory(course.category || '');
+    setCategory(normalizeCurriculumLevel(course.category) || '');
     setFee(course.fee);
     setStatus(course.status);
     setIsEditing(true);
@@ -217,16 +190,16 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
     : isTeacher
     ? 'My Assigned Courses'
     : isCreateView
-    ? 'Create Course'
-    : viewMeta.title;
+    ? 'New course'
+    : 'Courses';
 
   const pageDescription = profile?.role === 'student'
-    ? 'Your enrolled courses and academic content.'
+    ? 'Your enrolled classes.'
     : isTeacher
-    ? 'Courses assigned to you for teaching and content management.'
+    ? 'Classes assigned to you.'
     : isCreateView
-    ? 'Add a new course to your institution catalog. You can assign a teacher and publish later.'
-    : viewMeta.description;
+    ? 'Set the basics, then add lessons from the course page.'
+    : `${filteredCourses.length} course${filteredCourses.length === 1 ? '' : 's'}`;
 
   const courseForm = (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -241,13 +214,18 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
       </div>
 
       <div>
-        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Category</label>
-        <input
+        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Curriculum</label>
+        <select
+          required
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          placeholder="e.g. Mathematics, Science, Grade 10"
-          className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black"
-        />
+          className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black appearance-none"
+        >
+          <option value="">Choose level</option>
+          {CURRICULUM_LEVELS.map((level) => (
+            <option key={level} value={level}>{level}</option>
+          ))}
+        </select>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -307,13 +285,8 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">{pageTitle}</h1>
-          <p className="text-gray-500 mt-1 font-medium text-sm">{pageDescription}</p>
-          {!profile || profile.role === 'owner' || profile.role === 'admin' ? (
-            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-2">
-              Showing {filteredCourses.length} of {courses.length} courses
-            </p>
-          ) : null}
+          <h1 className="text-2xl font-extrabold tracking-tight">{pageTitle}</h1>
+          <p className="text-gray-500 mt-1 text-sm">{pageDescription}</p>
         </div>
         {canManageInstitution && !isCreateView && (
           <Button
@@ -336,12 +309,12 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
               <BookOpen className="w-10 h-10 text-gray-300" />
             </div>
             <h3 className="text-lg font-bold text-gray-900">
-              {profile?.role === 'student' ? 'No Enrolled Courses' : viewMeta.emptyTitle}
+              {profile?.role === 'student' ? 'No courses yet' : 'No courses yet'}
             </h3>
-            <p className="text-gray-500 max-w-xs mx-auto mt-2 italic text-sm">
+            <p className="text-gray-500 max-w-xs mx-auto mt-2 text-sm">
               {profile?.role === 'student'
-                ? 'You are not currently enrolled in any courses. Please contact your institution owner or teacher.'
-                : viewMeta.emptyDescription}
+                ? 'You are not enrolled in any class.'
+                : 'Create your first course to get started.'}
             </p>
           </div>
         ) : (
@@ -353,10 +326,16 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
                     <BookOpen className={`w-6 h-6 ${course.status === 'active' ? 'text-white' : 'text-gray-400'}`} />
                   </div>
                   <h3 className="text-xl font-bold text-gray-900 mb-2">{course.title}</h3>
-                  {course.category ? (
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-2">{course.category}</p>
-                  ) : null}
-                  <p className="text-sm text-gray-500 line-clamp-3 mb-4">{course.description}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-2">
+                    {resolveCurriculumLevel(course.category)}
+                  </p>
+                  <p className="text-sm text-gray-500 line-clamp-2 mb-3">{course.description}</p>
+                  <p className="text-xs text-gray-400">
+                    {statusLabel(course.status)}
+                    {course.status === 'active' && formatShortDate(course.updated_at || course.updatedAt)
+                      ? ` · since ${formatShortDate(course.updated_at || course.updatedAt)}`
+                      : ''}
+                  </p>
                 </div>
 
                 <div className="mt-auto pt-4 border-t border-gray-50 flex items-center justify-between">
@@ -383,7 +362,7 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
                 </div>
                 {course.status !== 'active' && (
                   <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2 py-1 bg-amber-50 text-amber-600 rounded-md text-[10px] font-bold uppercase border border-amber-100">
-                    <Lock className="w-3 h-3" /> {course.status}
+                    <Lock className="w-3 h-3" /> {statusLabel(course.status)}
                   </div>
                 )}
               </Card>

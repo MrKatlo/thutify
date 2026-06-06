@@ -12,6 +12,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:phase0": "tsx scripts/test-phase0.ts",
+    "sync:dev-vars": "tsx scripts/sync-dev-vars.ts",
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {

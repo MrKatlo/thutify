@@ -68,12 +68,10 @@ const MENU_DATA: MenuGroup[] = [
     items: [
       { id: 'courses/all', label: 'All Courses' },
       { id: 'courses/create', label: 'Create Course' },
-      { id: 'courses/categories', label: 'Categories' },
-      { id: 'courses/materials', label: 'Course Materials' },
-      { id: 'courses/enrollment', label: 'Course Enrollment' },
-      { id: 'courses/analytics', label: 'Course Analytics' },
-      { id: 'courses/published', label: 'Published Courses' },
-      { id: 'courses/drafts', label: 'Draft Courses' },
+      { id: 'courses/categories', label: 'Curriculum' },
+      { id: 'courses/materials', label: 'Materials' },
+      { id: 'courses/enrollment', label: 'Enrollment' },
+      { id: 'courses/analytics', label: 'Analytics' },
     ]
   },
   {

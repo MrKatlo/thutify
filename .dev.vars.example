@@ -1,0 +1,15 @@
+# Copy to .dev.vars for local `wrangler dev` / Vite Cloudflare plugin.
+# Wrangler does not read .env automatically for worker bindings.
+
+SENDGRID_API_KEY=your-sendgrid-api-key
+EMAIL=team@example.com
+
+# Optional Mailjet fallback (SendGrid is tried first when both are set)
+MJ_APIKEY_PUBLIC=
+MJ_APIKEY_PRIVATE=
+
+# Legacy Mailjet env names also supported by the worker
+EMAIL_PUPLIC_KEY=
+EMAIL_PRIVATE_KEY=
+
+APP_URL=http://localhost:8787

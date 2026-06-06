@@ -1,8 +1,11 @@
+import { config as loadDotenv } from 'dotenv';
 import { strict as assert } from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import initSqlJs from 'sql.js';
 import { createApp, type Env } from '../src/worker';
+
+loadDotenv();
 
 type JsonRecord = Record<string, unknown>;
 
@@ -164,6 +167,31 @@ async function loadMigrationSql() {
   return migrations.join('\n\n');
 }
 
+function readEmailEnv(): Pick<
+  Env,
+  | 'SENDGRID_API_KEY'
+  | 'EMAIL'
+  | 'EMAIL_PUPLIC_KEY'
+  | 'EMAIL_PRIVATE_KEY'
+  | 'MJ_APIKEY_PUBLIC'
+  | 'MJ_APIKEY_PRIVATE'
+  | 'MAILJET_APIKEY_PUBLIC'
+  | 'MAILJET_APIKEY_PRIVATE'
+  | 'APP_URL'
+> {
+  return {
+    SENDGRID_API_KEY: process.env.SENDGRID_API_KEY,
+    EMAIL: process.env.EMAIL,
+    EMAIL_PUPLIC_KEY: process.env.EMAIL_PUPLIC_KEY,
+    EMAIL_PRIVATE_KEY: process.env.EMAIL_PRIVATE_KEY,
+    MJ_APIKEY_PUBLIC: process.env.MJ_APIKEY_PUBLIC,
+    MJ_APIKEY_PRIVATE: process.env.MJ_APIKEY_PRIVATE,
+    MAILJET_APIKEY_PUBLIC: process.env.MAILJET_APIKEY_PUBLIC,
+    MAILJET_APIKEY_PRIVATE: process.env.MAILJET_APIKEY_PRIVATE,
+    APP_URL: process.env.APP_URL,
+  };
+}
+
 async function createTestEnv() {
   const SQL = (await initSqlJs()) as unknown as SqlModule;
   const sqlDatabase = new SQL.Database();
@@ -173,6 +201,7 @@ async function createTestEnv() {
     env: {
       DB: new FakeD1Database(sqlDatabase),
       BUCKET: new FakeR2Bucket(),
+      ...readEmailEnv(),
     } as unknown as Env,
     sqlDatabase,
   };
@@ -257,13 +286,19 @@ async function main() {
     },
     deliverInvitationEmail: async (payload) => ({
       provider: 'mock',
-      delivered: false,
+      delivered: true,
       inviteUrl: `/${payload.institutionSlug}/login?invite=${payload.inviteToken}`,
       email: payload.email,
       subject: `Invitation to teach at ${payload.institutionName}`,
       body: `Hello ${payload.fullName}`,
       temporaryPassword: payload.temporaryPassword,
       expiresAt: payload.expiresAt,
+    }),
+    sendTransactionalEmail: async (_env, payload) => ({
+      provider: 'mock',
+      delivered: true,
+      to: payload.to,
+      subject: payload.subject,
     }),
     updateAuthUserPassword: async () => undefined,
   });
@@ -305,8 +340,13 @@ async function main() {
     },
   });
   assertOk(passwordResetRequest, 'password reset request', 200);
-  const resetToken = (passwordResetRequest.json as { token: string }).token;
+  const passwordResetJson = passwordResetRequest.json as {
+    token: string;
+    emailDelivered?: boolean;
+  };
+  const resetToken = passwordResetJson.token;
   assert.ok(resetToken, 'password reset token should be returned');
+  assert.equal(passwordResetJson.emailDelivered, true, 'password reset email should be delivered in tests');
 
   const passwordResetConfirm = await request(app, env, 'POST', `/api/auth/password-reset/${resetToken}`, {
     body: { newPassword: 'not-used-by-firebase' },
