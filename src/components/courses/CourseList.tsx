@@ -21,7 +21,7 @@ interface CourseListProps {
 }
 
 export function CourseList({ activeTab }: CourseListProps) {
-  const { profile, institutionId } = useAuth();
+  const { profile, institutionId, canManageInstitution, isTeacher } = useAuth();
   const [courses, setCourses] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,8 +45,11 @@ export function CourseList({ activeTab }: CourseListProps) {
   const [fee, setFee] = useState<number>(0);
   const [status, setStatus] = useState<'active' | 'draft' | 'archived'>('draft');
 
-  const isOwner = profile?.role === 'owner';
-  const canEditCourses = profile?.role === 'owner' || profile?.role === 'teacher';
+  const canEditCourse = (course: { teacher_id?: string; teacherId?: string }) => {
+    if (canManageInstitution) return true;
+    if (isTeacher) return (course.teacher_id || course.teacherId) === profile?.uid;
+    return false;
+  };
 
   useEffect(() => {
     fetchData();
@@ -97,8 +100,8 @@ export function CourseList({ activeTab }: CourseListProps) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!institutionId) return;
-    if (isEditing && !canEditCourses) return;
-    if (!isEditing && !isOwner) return;
+    if (isEditing && selectedCourse && !canEditCourse(selectedCourse)) return;
+    if (!isEditing && !canManageInstitution) return;
 
     try {
       const courseData = {
@@ -165,10 +168,14 @@ export function CourseList({ activeTab }: CourseListProps) {
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Institutional Courses</h1>
           <p className="text-gray-500 mt-1 font-medium text-sm">
-            {profile?.role === 'student' ? 'Your enrolled courses and academic content.' : 'Manage the institutional curriculum and assignments.'}
+            {profile?.role === 'student'
+              ? 'Your enrolled courses and academic content.'
+              : isTeacher
+              ? 'Courses assigned to you for teaching and content management.'
+              : 'Manage the institutional curriculum and assignments.'}
           </p>
         </div>
-        {isOwner && (
+        {canManageInstitution && (
           <Button onClick={() => { resetForm(); setShowForm(true); }} className="gap-2 bg-black text-white hover:bg-gray-800">
             <Plus className="w-4 h-4" /> Create Course
           </Button>
@@ -215,10 +222,10 @@ export function CourseList({ activeTab }: CourseListProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {canEditCourses && (
+                    {canEditCourse(course) && (
                       <>
                         <button onClick={() => handleEdit(course)} className="p-2 text-gray-400 hover:text-black transition-colors"><Edit className="w-4 h-4" /></button>
-                        {isOwner && <button onClick={() => handleDelete(course.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>}
+                        {canManageInstitution && <button onClick={() => handleDelete(course.id)} className="p-2 text-gray-400 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>}
                       </>
                     )}
                     <button onClick={() => setViewingCourse(course)} className="flex items-center gap-1 text-xs font-bold text-black bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-black hover:text-white transition-all">

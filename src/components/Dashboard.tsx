@@ -1,16 +1,62 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Card, Button } from './ui/Card';
-import { BookOpen, Users, Calendar, TrendingUp, Plus, DollarSign, CheckCircle, Clock, Video, Bell, PenTool, Award, Play, Layers, FileText } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { BookOpen, Users, Calendar, TrendingUp, Plus, DollarSign, CheckCircle, Video, PenTool, Play, Layers, FileText } from 'lucide-react';
+import { motion } from 'motion/react';
+import { formatDistanceToNow } from 'date-fns';
 import * as cfApi from '../services/cfApi';
+import type { AuditLogEntry } from '../services/cfApi';
+import type { StudentSummary } from '../types';
 
 interface DashboardProps {
   setActiveTab: (tab: string) => void;
+  initialView?: string;
 }
 
-export function Dashboard({ setActiveTab }: DashboardProps) {
-  const { profile, isOwner, institutionId } = useAuth();
+const TEACHER_VIEW_META: Record<string, { title: string; description: string }> = {
+  overview: { title: 'Teaching Overview', description: 'Your classes, students, and upcoming sessions at a glance.' },
+  'my-classes': { title: 'My Classes', description: 'Courses you are assigned to teach.' },
+  'my-schedule': { title: 'My Schedule', description: 'Timetable entries and upcoming live classes.' },
+  'pending-grading': { title: 'Pending Grading', description: 'Student submissions awaiting your review.' },
+};
+
+interface ActivityItem {
+  type: string;
+  title: string;
+  meta: string;
+  date: string;
+}
+
+function formatAuditActivity(entry: AuditLogEntry): ActivityItem {
+  const labels: Record<string, string> = {
+    'teacher.account.created': 'Teacher account created',
+    'teacher.profile.updated': 'Teacher profile updated',
+    'teacher.courses.assigned': 'Teacher courses assigned',
+    'teacher.attendance.marked': 'Teacher attendance marked',
+    'student.profile.updated': 'Student profile updated',
+    'student.status.updated': 'Student status updated',
+  };
+  const action = String(entry.action || '');
+  const actor = entry.actorName || entry.actor_name || 'System';
+  const metadata =
+    entry.metadata && typeof entry.metadata === 'object' ? (entry.metadata as Record<string, unknown>) : {};
+  const detail = [metadata.email, metadata.status, metadata.attendanceDate]
+    .filter(Boolean)
+    .map(String)
+    .join(' • ');
+  const createdAt = String(entry.createdAt || entry.created_at || '');
+  return {
+    type: action.includes('payment') ? 'payment' : action.includes('student') ? 'student' : 'system',
+    title: labels[action] || action.replace(/\./g, ' '),
+    meta: detail ? `${actor} • ${detail}` : actor,
+    date: createdAt
+      ? formatDistanceToNow(new Date(createdAt), { addSuffix: true })
+      : 'Recently',
+  };
+}
+
+export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardProps) {
+  const { profile, canManageInstitution, isTeacher, institutionId } = useAuth();
 
   // Owner & Teacher stats
   const [stats, setStats] = useState({
@@ -43,6 +89,10 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
   const [upcomingAssignments, setUpcomingAssignments] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [enrolledCoursesList, setEnrolledCoursesList] = useState<any[]>([]);
+  const [unpaidStudents, setUnpaidStudents] = useState<StudentSummary[]>([]);
+  const [teacherCourses, setTeacherCourses] = useState<any[]>([]);
+  const [pendingSubmissions, setPendingSubmissions] = useState<any[]>([]);
+  const [scheduleEntries, setScheduleEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -120,13 +170,26 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
 
       } else {
         // --- OWNER & TEACHER DASHBOARD ---
-        const [dashStats, courses, liveClasses, announcements, enrollments] = await Promise.all([
-          cfApi.getDashboardStats(institutionId),
-          cfApi.listCourses(institutionId),
-          cfApi.listLiveClasses(institutionId),
-          cfApi.listAnnouncements(institutionId),
-          cfApi.listEnrollments(institutionId),
-        ]);
+        const ownerFetches = canManageInstitution
+          ? [
+              cfApi.listAuditLog(institutionId, { limit: 10 }),
+              cfApi.listStudents(institutionId, {
+                status: 'approved',
+                pagination: { limit: 200, offset: 0 },
+              }),
+            ]
+          : [Promise.resolve([]), Promise.resolve({ results: [], total: 0, limit: 0, offset: 0 })];
+
+        const [dashStats, courses, liveClasses, announcements, enrollments, auditLog, studentsPage] =
+          await Promise.all([
+            cfApi.getDashboardStats(institutionId),
+            cfApi.listCourses(institutionId),
+            cfApi.listLiveClasses(institutionId),
+            cfApi.listAnnouncements(institutionId),
+            cfApi.listEnrollments(institutionId),
+            ownerFetches[0] as Promise<AuditLogEntry[]>,
+            ownerFetches[1] as Promise<{ results: StudentSummary[] }>,
+          ]);
 
         setStats({
           studentsCount: dashStats.students_count || 0,
@@ -136,50 +199,106 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
           unpaidCount: dashStats.unpaid_count || 0
         });
 
-        // Compute teacher stats dynamically
-        const myCourses = courses.filter((c: any) => c.teacher_id === profile.uid || c.author_id === profile.uid);
+        if (canManageInstitution) {
+          const auditEntries = auditLog as AuditLogEntry[];
+          setRecentActivities(
+            auditEntries.length > 0 ? auditEntries.map(formatAuditActivity) : [],
+          );
+          const withBalance = (studentsPage.results || [])
+            .filter((student) => Number(student.balance ?? 0) > 0)
+            .sort((a, b) => Number(b.balance ?? 0) - Number(a.balance ?? 0))
+            .slice(0, 5);
+          setUnpaidStudents(withBalance);
+        }
+
+        const myCourses = isTeacher && !canManageInstitution
+          ? courses
+          : courses.filter((c: any) => c.teacher_id === profile.uid || c.author_id === profile.uid);
         const myCoursesIds = myCourses.map((c: any) => c.id);
+        setTeacherCourses(myCourses);
 
         let myStudentsCount = 0;
         if (myCoursesIds.length > 0) {
-          const myEnrollments = enrollments.filter((e: any) => myCoursesIds.includes(e.course_id));
-          myStudentsCount = Array.from(new Set(myEnrollments.map((e: any) => e.student_id))).length;
+          const myEnrollments = enrollments.filter((e: any) => myCoursesIds.includes(e.course_id || e.courseId));
+          myStudentsCount = Array.from(new Set(myEnrollments.map((e: any) => e.student_id || e.studentId))).length;
         }
 
-        // Placeholder for lessons count (would require course structure in D1)
         let myLessonsCount = 0;
+        if (isTeacher && myCoursesIds.length > 0) {
+          const lessonLists = await Promise.all(
+            myCoursesIds.slice(0, 5).map(async (courseId: string) => {
+              const modules = await cfApi.listModules(courseId);
+              const perModule = await Promise.all(modules.map((m) => cfApi.listLessons(m.id)));
+              return perModule.reduce((sum, lessons) => sum + lessons.length, 0);
+            }),
+          );
+          myLessonsCount = lessonLists.reduce((sum, count) => sum + count, 0);
+        }
+
+        let avgProgress = 0;
+        if (isTeacher && !canManageInstitution) {
+          const [submissions, timetable, performance] = await Promise.all([
+            cfApi.listSubmissions(institutionId),
+            cfApi.getTimetable(institutionId, profile.uid),
+            cfApi.getMyTeacherPerformance(institutionId).catch(() => null),
+          ]);
+          setPendingSubmissions(
+            submissions.filter(
+              (submission: any) =>
+                submission.status === 'pending' || submission.status === 'submitted' || submission.grade == null,
+            ),
+          );
+          setScheduleEntries(timetable);
+
+          const courseEnrollments = enrollments.filter((e: any) => myCoursesIds.includes(e.course_id || e.courseId));
+          const completedEnrollments = courseEnrollments.filter((e: any) => String(e.status || '') === 'completed').length;
+          const enrollmentProgress = courseEnrollments.length > 0
+            ? Math.round((completedEnrollments / courseEnrollments.length) * 100)
+            : 0;
+          const myAssignmentIds = new Set(
+            (await cfApi.listAssignments(institutionId))
+              .filter((a: any) => myCoursesIds.includes(a.course_id || a.courseId))
+              .map((a: any) => a.id),
+          );
+          const mySubmissions = submissions.filter((s: any) => myAssignmentIds.has(s.assignment_id || s.assignmentId));
+          const gradedSubmissions = mySubmissions.filter((s: any) => s.status === 'graded' || s.grade != null).length;
+          const submissionProgress = mySubmissions.length > 0
+            ? Math.round((gradedSubmissions / mySubmissions.length) * 100)
+            : 0;
+          avgProgress = performance?.courseCompletionRate ?? Math.round((enrollmentProgress + submissionProgress) / 2);
+        }
 
         setTeacherStats({
           coursesCount: myCourses.length,
           studentsCount: myStudentsCount,
           lessonsCount: myLessonsCount,
-          avgProgress: 82
+          avgProgress,
         });
 
-        // Set live classes list for teachers/owners
-        const classes = liveClasses.slice(0, 3);
+        const classes = (isTeacher && !canManageInstitution
+          ? liveClasses.filter((lc: any) => lc.teacher_id === profile.uid)
+          : liveClasses
+        ).slice(0, 3);
         setUpcomingClasses(classes);
 
         // Announcements
         const anns = announcements.slice(0, 3);
         setAnnouncements(anns);
 
-        // Recent activities - placeholder for now
-        setRecentActivities(getMockActivities());
+        if (!canManageInstitution) {
+          setRecentActivities([]);
+        }
       }
     } catch (err) {
       console.warn("Dashboard fetch failed:", err);
-      setRecentActivities(getMockActivities());
+      if (canManageInstitution) {
+        setRecentActivities([]);
+        setUnpaidStudents([]);
+      }
     } finally {
       setLoading(false);
     }
   };
-
-  const getMockActivities = () => [
-    { type: 'student', title: 'Student Enrolled: Alex Johnson', meta: 'Advanced Mathematics • Active', date: 'May 16' },
-    { type: 'payment', title: 'Payment Recorded: $500', meta: 'Ref: REF908123 • Card', date: 'May 15' },
-    { type: 'student', title: 'Student Enrolled: Maria Garcia', meta: 'Physics 101 • Active', date: 'May 14' }
-  ];
 
   const getOwnerStatsList = () => [
     { label: 'Total Students', value: stats.studentsCount.toString(), icon: Users, color: 'bg-blue-50 text-blue-600', tab: 'students/all' },
@@ -192,19 +311,19 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
     { label: 'My Courses', value: teacherStats.coursesCount.toString(), icon: BookOpen, color: 'bg-blue-50 text-blue-600', tab: 'courses' },
     { label: 'My Students', value: teacherStats.studentsCount.toString(), icon: Users, color: 'bg-green-50 text-green-600', tab: 'students' },
     { label: 'Total Lessons', value: teacherStats.lessonsCount.toString(), icon: Calendar, color: 'bg-purple-50 text-purple-600', tab: 'assignments/scheduling' },
-    { label: 'Avg. Progress', value: `${teacherStats.avgProgress}%`, icon: TrendingUp, color: 'bg-orange-50 text-orange-600', tab: 'reports' },
+    { label: 'Avg. Progress', value: `${teacherStats.avgProgress}%`, icon: TrendingUp, color: 'bg-orange-50 text-orange-600', tab: 'dashboard/my-classes' },
   ];
 
   const getStudentStatsList = () => [
     { label: 'Enrolled Courses', value: studentStats.enrolledCount.toString(), icon: BookOpen, color: 'bg-blue-50 text-blue-600', tab: 'courses' },
     { label: 'Completed Lessons', value: studentStats.completedCount.toString(), icon: CheckCircle, color: 'bg-green-50 text-green-600', tab: 'courses' },
-    { label: 'Attendance Rate', value: `${studentStats.attendanceRate}%`, icon: Calendar, color: 'bg-purple-50 text-purple-600', tab: 'attendance' },
-    { label: 'Payment Balance', value: `$${studentStats.balance.toLocaleString()}`, icon: DollarSign, color: studentStats.balance > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600', tab: 'dashboard/overview' },
+    { label: 'Attendance Rate', value: `${studentStats.attendanceRate}%`, icon: Calendar, color: 'bg-purple-50 text-purple-600', tab: 'student/attendance' },
+    { label: 'Payment Balance', value: `$${studentStats.balance.toLocaleString()}`, icon: DollarSign, color: studentStats.balance > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600', tab: 'finance/payments' },
   ];
 
-  const statsList = isOwner
+  const statsList = canManageInstitution
     ? getOwnerStatsList()
-    : profile?.role === 'teacher'
+    : isTeacher
     ? getTeacherStatsList()
     : getStudentStatsList();
 
@@ -215,6 +334,117 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
     { label: 'Upload Materials', icon: Plus, tab: 'content/upload' },
   ];
 
+  const teacherOnlyView = isTeacher && !canManageInstitution;
+  const teacherView = teacherOnlyView ? (TEACHER_VIEW_META[initialView] ? initialView : 'overview') : 'overview';
+  const teacherHeading = teacherOnlyView ? TEACHER_VIEW_META[teacherView] : null;
+
+  if (teacherOnlyView && teacherView === 'my-classes') {
+    return (
+      <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-gray-900">{teacherHeading?.title}</h1>
+          <p className="text-gray-500 mt-1 font-semibold text-sm">{teacherHeading?.description}</p>
+        </div>
+        {loading ? (
+          <div className="h-48 bg-gray-50 rounded-3xl animate-pulse" />
+        ) : teacherCourses.length === 0 ? (
+          <Card className="p-8 text-center text-sm text-gray-500">No courses assigned yet.</Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {teacherCourses.map((course) => (
+              <Card key={course.id} className="p-5">
+                <h3 className="font-bold text-gray-900">{course.title || course.course_name}</h3>
+                <p className="text-xs text-gray-500 mt-2 line-clamp-2">{course.description || 'No description'}</p>
+                <Button onClick={() => setActiveTab('courses/all')} className="mt-4 bg-black text-white text-xs">
+                  Open Course
+                </Button>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (teacherOnlyView && teacherView === 'my-schedule') {
+    return (
+      <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-gray-900">{teacherHeading?.title}</h1>
+          <p className="text-gray-500 mt-1 font-semibold text-sm">{teacherHeading?.description}</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card title="Timetable">
+            {scheduleEntries.length === 0 ? (
+              <p className="text-sm text-gray-500 mt-4">No timetable entries yet.</p>
+            ) : (
+              <div className="space-y-3 mt-4">
+                {scheduleEntries.map((entry: any) => (
+                  <div key={entry.id} className="p-3 border border-gray-100 rounded-xl text-sm">
+                    <p className="font-bold">{entry.course_name || entry.courseName || 'Course'}</p>
+                    <p className="text-gray-500 text-xs mt-1">
+                      Day {entry.day_of_week ?? entry.dayOfWeek} • {entry.start_time || entry.startTime} – {entry.end_time || entry.endTime}
+                      {entry.room ? ` • ${entry.room}` : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+          <Card title="Upcoming Live Classes">
+            {upcomingClasses.length === 0 ? (
+              <p className="text-sm text-gray-500 mt-4">No live classes scheduled.</p>
+            ) : (
+              <div className="space-y-3 mt-4">
+                {upcomingClasses.map((item: any) => (
+                  <div key={item.id} className="p-3 border border-gray-100 rounded-xl text-sm">
+                    <p className="font-bold">{item.title}</p>
+                    <p className="text-gray-500 text-xs mt-1">{item.courseName || item.course_name || 'Classroom'}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Button onClick={() => setActiveTab('assignments/scheduling')} variant="outline" className="mt-4 text-xs">
+              Open Exam Scheduling
+            </Button>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (teacherOnlyView && teacherView === 'pending-grading') {
+    return (
+      <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-gray-900">{teacherHeading?.title}</h1>
+          <p className="text-gray-500 mt-1 font-semibold text-sm">{teacherHeading?.description}</p>
+        </div>
+        <Card title="Submissions Awaiting Review">
+          {loading ? (
+            <div className="h-32 bg-gray-50 rounded-2xl animate-pulse mt-4" />
+          ) : pendingSubmissions.length === 0 ? (
+            <p className="text-sm text-gray-500 mt-4">No pending submissions.</p>
+          ) : (
+            <div className="space-y-3 mt-4">
+              {pendingSubmissions.slice(0, 20).map((submission: any) => (
+                <div key={submission.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                  <div>
+                    <p className="font-bold text-sm">{submission.assignment_title || submission.assignmentTitle || 'Assignment'}</p>
+                    <p className="text-xs text-gray-500">{submission.student_name || submission.studentName || 'Student'}</p>
+                  </div>
+                  <Button onClick={() => setActiveTab('assignments/manual-grading')} className="text-xs bg-black text-white">
+                    Grade
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
@@ -222,7 +452,9 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-gray-900">
             Welcome back, {profile?.fullName?.split(' ')[0] || 'User'}
           </h1>
-          <p className="text-gray-500 mt-1 font-semibold text-sm capitalize">Role: {profile?.role}</p>
+          <p className="text-gray-500 mt-1 font-semibold text-sm capitalize">
+            {teacherHeading ? teacherHeading.description : `Role: ${profile?.role}`}
+          </p>
         </div>
       </div>
 
@@ -249,7 +481,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
         ))}
       </div>
 
-      {(profile?.role === 'teacher' || isOwner) && (
+      {(isTeacher || canManageInstitution) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-10">
           {contentActions.map((item) => (
             <button
@@ -328,7 +560,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                         </div>
                       </div>
                       <button 
-                        onClick={() => setActiveTab('assignments/submissions')}
+                        onClick={() => setActiveTab('assignments/all')}
                         className="text-[10px] font-bold text-gray-400 hover:text-black uppercase tracking-widest px-4 py-2 border border-gray-200 rounded-xl bg-white w-full sm:w-auto text-center"
                       >
                         Submit
@@ -336,13 +568,18 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                     </div>
                   ))
                 )
+              ) : recentActivities.length === 0 ? (
+                <div className="py-6 text-center text-gray-400 font-medium italic text-xs">
+                  No recent institution activity yet.
+                </div>
               ) : (
                 recentActivities.map((act, i) => (
                   <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-gray-50 rounded-2xl group cursor-pointer hover:bg-gray-100 transition-all border border-transparent hover:border-gray-200 gap-4">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-white rounded-xl flex flex-col items-center justify-center border border-gray-200 shadow-sm shrink-0">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase leading-none mb-0.5">May</span>
-                        <span className="text-lg font-bold leading-none">{act.date.split('/')[1] || '16'}</span>
+                      <div className="w-12 h-12 bg-white rounded-xl flex flex-col items-center justify-center border border-gray-200 shadow-sm shrink-0 px-1">
+                        <span className="text-[9px] font-bold text-gray-400 uppercase leading-none text-center line-clamp-2">
+                          {act.date}
+                        </span>
                       </div>
                       <div>
                         <h4 className="font-bold text-gray-900 group-hover:text-black transition-colors text-sm">{act.title}</h4>
@@ -350,7 +587,7 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
                       </div>
                     </div>
                     <button 
-                      onClick={() => setActiveTab(act.type === 'payment' ? 'finance/payments' : 'students/all')}
+                      onClick={() => setActiveTab(act.type === 'payment' ? 'finance/payments' : 'monitoring/activity')}
                       className="text-[10px] font-bold text-gray-400 hover:text-black uppercase tracking-widest px-4 py-2 border border-gray-200 rounded-xl bg-white w-full sm:w-auto text-center"
                     >
                       View
@@ -410,30 +647,34 @@ export function Dashboard({ setActiveTab }: DashboardProps) {
             </div>
           </Card>
 
-          <Card title={isOwner ? 'Unpaid Balance Alerts' : 'Learning Progress'}>
+          <Card title={canManageInstitution ? 'Unpaid Balance Alerts' : 'Learning Progress'}>
              <div className="space-y-6 mt-4">
-               {isOwner ? (
+               {canManageInstitution ? (
                  <>
-                   {[
-                     { name: 'Alex Johnson', balance: 250 },
-                     { name: 'Maria Garcia', balance: 200 },
-                     { name: 'James Wilson', balance: 400 }
-                   ].map((item, i) => (
-                     <div key={i} className="flex items-center justify-between">
-                       <div className="flex items-center gap-3">
-                         <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-600 text-sm">
-                           {item.name[0]}
+                   {unpaidStudents.length === 0 ? (
+                     <p className="text-xs text-gray-400 italic text-center py-4">No outstanding student balances.</p>
+                   ) : (
+                     unpaidStudents.map((student) => {
+                       const name = student.fullName || student.full_name || student.email || 'Student';
+                       const balance = Number(student.balance ?? 0);
+                       return (
+                         <div key={student.userId || student.id} className="flex items-center justify-between">
+                           <div className="flex items-center gap-3">
+                             <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-600 text-sm">
+                               {name[0]}
+                             </div>
+                             <div>
+                               <p className="text-sm font-bold">{name}</p>
+                               <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider">Unpaid Balance</p>
+                             </div>
+                           </div>
+                           <span className="text-sm font-black text-red-600">${balance.toLocaleString()}</span>
                          </div>
-                         <div>
-                           <p className="text-sm font-bold">{item.name}</p>
-                           <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider">Unpaid Balance</p>
-                         </div>
-                       </div>
-                       <span className="text-sm font-black text-red-600">${item.balance}</span>
-                     </div>
-                   ))}
+                       );
+                     })
+                   )}
                    <button 
-                     onClick={() => setActiveTab('finance/payments')}
+                     onClick={() => setActiveTab('finance/balances')}
                      className="w-full mt-6 py-2.5 text-xs font-bold text-gray-400 hover:text-black uppercase tracking-widest border border-dashed border-gray-200 rounded-xl transition-all"
                    >
                      View All Financials

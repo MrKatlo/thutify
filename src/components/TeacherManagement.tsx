@@ -186,8 +186,8 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 }
 
 export function TeacherManagement({ activeTab }: TeacherManagementProps) {
-  const { institutionId, institution, isOwner, isAdmin } = useAuth();
-  const canManageTeachers = Boolean(isOwner || isAdmin);
+  const { institutionId, institution, canManageInstitution } = useAuth();
+  const canManageTeachers = Boolean(canManageInstitution);
   const viewCopy = TAB_COPY[activeTab] || TAB_COPY['teachers/all'];
 
   const [teachersResponse, setTeachersResponse] =

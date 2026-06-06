@@ -3,6 +3,7 @@ import { onIdTokenChanged, type User } from 'firebase/auth';
 import { auth, logout as firebaseLogout } from '../lib/firebase';
 import * as cfApi from '../services/cfApi';
 import type { Institution, InstitutionUser, PlatformUser } from '../types';
+import { canManageInstitution as resolveCanManageInstitution } from '../lib/roles';
 
 export interface MergedProfile {
   uid: string;
@@ -16,6 +17,8 @@ export interface MergedProfile {
   institutionId?: string;
   completedLessons?: string[];
   isPlatformAdmin?: boolean;
+  teacherApproved?: boolean;
+  teacher_approved?: boolean;
 }
 
 const ACTIVE_INSTITUTION_STORAGE_KEY = 'zerot:activeInstitutionId';
@@ -131,6 +134,8 @@ export function useAuth(activeInstitutionId?: string | null) {
           institutionId: membership?.institutionId || currentInstitutionId || undefined,
           completedLessons: baseUser.completedLessons || baseUser.completed_lessons || [],
           isPlatformAdmin: Boolean(baseUser.isPlatformAdmin || baseUser.is_platform_admin),
+          teacherApproved: membership?.teacherApproved ?? membership?.teacher_approved ?? true,
+          teacher_approved: membership?.teacherApproved ?? membership?.teacher_approved ?? true,
         };
 
         setPlatformUser(baseUser);
@@ -173,7 +178,9 @@ export function useAuth(activeInstitutionId?: string | null) {
     isRejected: profile?.status === 'rejected',
     isOwner: profile?.role === 'owner',
     isAdmin: profile?.role === 'admin',
+    canManageInstitution: resolveCanManageInstitution(profile?.role),
     isTeacher: profile?.role === 'teacher',
+    isTeacherApproved: profile?.role !== 'teacher' || profile?.teacherApproved !== false,
     isStudent: profile?.role === 'student',
     isPlatformAdmin: profile?.isPlatformAdmin === true,
     institutionId: currentInstitutionId,

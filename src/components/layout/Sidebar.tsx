@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { 
-  Home, Users, BookOpen, Layers, Edit3, CalendarCheck, 
+  Home, Users, User, BookOpen, Layers, Edit3, CalendarCheck, 
   DollarSign, BarChart2, Bell, Award, ShieldCheck, 
   LayoutTemplate, Settings, Activity, Search, LogOut,
   ChevronDown, ChevronRight
@@ -9,6 +9,7 @@ import { Button } from '../ui/Card';
 import { logout } from '../../lib/firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { cn } from '../../lib/utils';
+import { effectiveMenuRole } from '../../lib/roles';
 import { Institution } from '../../types';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -37,7 +38,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'students', label: 'Students', icon: Users, roles: ['owner', 'admin', 'teacher'],
+    id: 'students', label: 'Students', icon: Users, roles: ['owner', 'teacher'],
     items: [
       { id: 'students/all', label: 'All Students' },
       { id: 'students/add', label: 'Add Student' },
@@ -51,7 +52,7 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'teachers', label: 'Teachers', icon: Users, roles: ['owner', 'admin'],
+    id: 'teachers', label: 'Teachers', icon: Users, roles: ['owner'],
     items: [
       { id: 'teachers/all', label: 'All Teachers' },
       { id: 'teachers/add', label: 'Add Teacher' },
@@ -126,16 +127,30 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'reports', label: 'Reports & Analytics', icon: BarChart2, roles: ['owner'],
+    id: 'my-account', label: 'My Account', icon: User, roles: ['teacher', 'student'],
     items: [
-      { id: 'reports/student', label: 'Student Reports' },
-      { id: 'reports/financial', label: 'Financial Reports' },
-      { id: 'reports/revenue', label: 'Revenue Reports' },
+      { id: 'teacher/profile', label: 'My Profile', roles: ['teacher'] },
+      { id: 'teacher/attendance', label: 'My Attendance', roles: ['teacher'] },
+      { id: 'teacher/performance', label: 'My Performance', roles: ['teacher'] },
+      { id: 'settings/profile', label: 'Personal Settings' },
+      { id: 'student/attendance', label: 'My Attendance', roles: ['student'] },
+      { id: 'finance/payments', label: 'My Payments', roles: ['student'] },
+      { id: 'student/certificates', label: 'My Certificates', roles: ['student'] },
+      { id: 'settings/notifications', label: 'Notification Prefs' },
+    ]
+  },
+  {
+    id: 'reports', label: 'Reports & Analytics', icon: BarChart2, roles: ['owner', 'teacher'],
+    items: [
+      { id: 'reports/student', label: 'Student Reports', roles: ['owner'] },
+      { id: 'reports/financial', label: 'Financial Reports', roles: ['owner'] },
+      { id: 'reports/revenue', label: 'Revenue Reports', roles: ['owner'] },
       { id: 'reports/course', label: 'Course Reports' },
       { id: 'reports/attendance', label: 'Attendance Reports' },
-      { id: 'reports/teacher', label: 'Teacher Reports' },
-      { id: 'reports/performance', label: 'Performance Analytics' },
-      { id: 'reports/export', label: 'Export Reports' },
+      { id: 'reports/assignments', label: 'Assignment Completion', roles: ['teacher'] },
+      { id: 'reports/teacher', label: 'Teacher Reports', roles: ['owner'] },
+      { id: 'reports/performance', label: 'Performance Analytics', roles: ['owner'] },
+      { id: 'reports/export', label: 'Export Reports', roles: ['owner'] },
     ]
   },
   {
@@ -171,7 +186,6 @@ const MENU_DATA: MenuGroup[] = [
     items: [
       { id: 'cms/pages', label: 'Pages' },
       { id: 'cms/faqs', label: 'FAQs' },
-      { id: 'cms/blog', label: 'Blog/News' },
       { id: 'cms/banners', label: 'Banners' },
     ]
   },
@@ -232,11 +246,11 @@ export function Sidebar({
   };
 
   const filteredMenu = useMemo(() => {
-    if (!profile?.role) return [];
-    
+    const menuRole = effectiveMenuRole(profile?.role);
+    if (!menuRole) return [];
+
     return MENU_DATA.filter(group => {
-      // Role check
-      if (group.roles && !group.roles.includes(profile.role!)) return false;
+      if (group.roles && !group.roles.includes(menuRole)) return false;
       
       // Search check
       if (searchQuery) {
@@ -247,11 +261,68 @@ export function Sidebar({
       }
       return true;
     }).map(group => {
-      if (!searchQuery) return group;
-      // Filter items if searching
+      let items = group.items;
+
+      if (group.id === 'my-account') {
+        items = items.filter((item) => !item.roles || item.roles.includes(menuRole));
+      }
+
+      if (menuRole === 'teacher') {
+        if (group.id === 'students') {
+          items = items.filter((item) => !['students/add', 'students/suspend', 'students/export'].includes(item.id));
+        }
+        if (group.id === 'courses') {
+          items = items.filter((item) => !['courses/create', 'courses/categories'].includes(item.id));
+        }
+        if (group.id === 'reports') {
+          items = items.filter((item) => !item.roles || item.roles.includes('teacher'));
+        }
+        if (group.id === 'dashboard') {
+          items = items.map((item) => {
+            if (item.id === 'dashboard/analytics') {
+              return { ...item, id: 'dashboard/my-classes', label: 'My Classes' };
+            }
+            if (item.id === 'dashboard/quick-actions') {
+              return { ...item, id: 'dashboard/my-schedule', label: 'My Schedule' };
+            }
+            if (item.id === 'dashboard/recent-activity') {
+              return { ...item, id: 'dashboard/pending-grading', label: 'Pending Grading' };
+            }
+            return item;
+          });
+        }
+      }
+
+      if (menuRole === 'student') {
+        if (group.id === 'dashboard') {
+          items = items
+            .filter((item) => item.id === 'dashboard/overview' || item.id === 'dashboard/recent-activity' || item.id === 'dashboard/quick-actions')
+            .map((item) => {
+              if (item.id === 'dashboard/recent-activity') {
+                return { ...item, label: 'Upcoming Tasks' };
+              }
+              if (item.id === 'dashboard/quick-actions') {
+                return { ...item, id: 'courses/all', label: 'My Courses' };
+              }
+              return item;
+            });
+        }
+        if (group.id === 'courses') {
+          items = items
+            .filter((item) => item.id === 'courses/all')
+            .map((item) => ({ ...item, label: 'My Courses' }));
+        }
+        if (group.id === 'assignments') {
+          items = items
+            .filter((item) => ['assignments/all', 'assignments/quizzes', 'assignments/exams'].includes(item.id))
+            .map((item) => (item.id === 'assignments/all' ? { ...item, label: 'My Assignments' } : item));
+        }
+      }
+
+      if (!searchQuery) return { ...group, items };
       return {
         ...group,
-        items: group.items.filter(item => item.label.toLowerCase().includes(searchQuery.toLowerCase()) || group.label.toLowerCase().includes(searchQuery.toLowerCase()))
+        items: items.filter(item => item.label.toLowerCase().includes(searchQuery.toLowerCase()) || group.label.toLowerCase().includes(searchQuery.toLowerCase()))
       };
     });
   }, [profile?.role, searchQuery]);

@@ -6,10 +6,13 @@ interface RefundListProps {
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   loading: boolean;
-  isOwner: boolean;
+  canManage?: boolean;
+  /** @deprecated use canManage */
+  isOwner?: boolean;
 }
 
-export function RefundList({ refunds, onApprove, onReject, loading, isOwner }: RefundListProps) {
+export function RefundList({ refunds, onApprove, onReject, loading, canManage, isOwner }: RefundListProps) {
+  const canApprove = canManage ?? isOwner ?? false;
   return (
     <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm mt-6">
       <div className="overflow-x-auto">
@@ -43,7 +46,7 @@ export function RefundList({ refunds, onApprove, onReject, loading, isOwner }: R
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    {ref.status === 'pending' && isOwner && (
+                    {ref.status === 'pending' && canApprove && (
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => onApprove(ref.id)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"><CheckCircle2 className="w-4 h-4" /></button>
                         <button onClick={() => onReject(ref.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><XCircle className="w-4 h-4" /></button>

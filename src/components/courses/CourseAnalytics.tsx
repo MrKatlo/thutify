@@ -13,7 +13,7 @@ function fmtDate(d?: string | number | null) {
 }
 
 export function CourseAnalytics() {
-  const { institutionId } = useAuth();
+  const { institutionId, isTeacher, profile } = useAuth();
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string>('');
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);

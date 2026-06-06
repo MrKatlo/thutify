@@ -24,7 +24,8 @@ export interface Env {
   EMAIL_PRIVATE_KEY?: string;
   EMAIL?: string;
   APP_URL?: string;
-  SENDGRID_API_KEY?: string;
+  FIREBASE_SERVICE_ACCOUNT_JSON?: string;
+  coSENDGRID_API_KEY?: string;
   MJ_APIKEY_PUBLIC?: string;
   MJ_APIKEY_PRIVATE?: string;
   MAILJET_APIKEY_PUBLIC?: string;
@@ -434,6 +435,16 @@ function mapInstitution(row: Row) {
     locale: String(row.locale || 'en'),
     custom_domain: (row.custom_domain as string | null) || null,
     customDomain: (row.custom_domain as string | null) || null,
+    email_sender: String(row.smtp_from_email || row.email_sender || ''),
+    emailSender: String(row.smtp_from_email || row.email_sender || ''),
+    payment_gateway: String(row.payment_gateway || 'Stripe'),
+    paymentGateway: String(row.payment_gateway || 'Stripe'),
+    email_notifications: Number(row.email_notifications ?? 1) === 1,
+    emailNotifications: Number(row.email_notifications ?? 1) === 1,
+    sms_notifications: Number(row.sms_notifications ?? 0) === 1,
+    smsNotifications: Number(row.sms_notifications ?? 0) === 1,
+    announcement_email_enabled: Number(row.announcement_email_enabled ?? 0) === 1,
+    announcementEmailEnabled: Number(row.announcement_email_enabled ?? 0) === 1,
     created_at: row.created_at || null,
     createdAt: row.created_at || null,
     updated_at: row.updated_at || null,
@@ -462,12 +473,16 @@ async function getInstitutionBySlug(db: D1Database, slug: string) {
 async function getMembership(db: D1Database, institutionId: string, userId: string) {
   const row = await dbFirst<Row>(
     db,
-    `SELECT iu.*, pu.full_name, pu.email, pu.phone, sa.status AS application_status
+    `SELECT iu.*, pu.full_name, pu.email, pu.phone, sa.status AS application_status,
+            tp.is_active AS teacher_is_active, tp.approved_at AS teacher_approved_at
      FROM institution_users iu
      JOIN platform_users pu ON pu.uid = iu.user_id
      LEFT JOIN student_applications sa
        ON sa.institution_id = iu.institution_id
       AND sa.user_id = iu.user_id
+     LEFT JOIN teacher_profiles tp
+       ON tp.institution_id = iu.institution_id
+      AND tp.user_id = iu.user_id
      WHERE iu.institution_id = ? AND iu.user_id = ?
      LIMIT 1`,
     [institutionId, userId],
@@ -483,6 +498,10 @@ async function getMembership(db: D1Database, institutionId: string, userId: stri
       ? 'rejected'
       : membershipStatus;
 
+  const teacherApproved =
+    role !== 'teacher' ||
+    (Number(row.teacher_is_active ?? 0) === 1 && Boolean(row.teacher_approved_at));
+
   return {
     id: String(row.id || ''),
     institution_id: String(row.institution_id || institutionId),
@@ -496,6 +515,8 @@ async function getMembership(db: D1Database, institutionId: string, userId: stri
     phone: String(row.phone || ''),
     role,
     status: derivedStatus,
+    teacher_approved: teacherApproved,
+    teacherApproved,
     created_at: row.created_at || null,
     createdAt: row.created_at || null,
     updated_at: row.updated_at || null,
@@ -826,10 +847,53 @@ async function recordTeacherLogin(db: D1Database, institutionId: string, userId:
   await dbRun(
     db,
     `UPDATE teacher_profiles
-     SET last_login_at = ?, is_active = 1, updated_at = ?
+     SET last_login_at = ?, updated_at = ?
      WHERE institution_id = ? AND user_id = ?`,
     [nowIso(), nowIso(), institutionId, userId],
   );
+}
+
+async function isPermissionAllowed(
+  db: D1Database,
+  institutionId: string,
+  role: string,
+  permissionKey: string,
+) {
+  if (isInstitutionAdminRole(role)) return true;
+  const row = await dbFirst<Row>(
+    db,
+    'SELECT allowed FROM role_permissions WHERE institution_id = ? AND role = ? AND permission_key = ? LIMIT 1',
+    [institutionId, role, permissionKey],
+  );
+  if (!row) return true;
+  return Number(row.allowed ?? 1) === 1;
+}
+
+async function requirePermission(
+  db: D1Database,
+  institutionId: string,
+  membership: { role?: string } | null | undefined,
+  permissionKey: string,
+  isPlatformAdmin: boolean,
+) {
+  if (isPlatformAdmin || isInstitutionAdminRole(membership?.role)) return null;
+  const role = String(membership?.role || '');
+  if (!role || role === 'student') {
+    return { error: jsonError('Forbidden', 403) };
+  }
+  const allowed = await isPermissionAllowed(db, institutionId, role, permissionKey);
+  if (!allowed) return { error: jsonError('Forbidden: insufficient permissions', 403) };
+  return null;
+}
+
+function canAccessTeacherRecord(
+  teacherId: string,
+  verifiedUid: string,
+  membership: { role?: string } | null | undefined,
+  isPlatformAdmin: boolean,
+) {
+  if (isPlatformAdmin || isInstitutionAdminRole(membership?.role)) return true;
+  return membership?.role === 'teacher' && teacherId === verifiedUid;
 }
 
 async function syncTeacherProfileCourseAssignments(db: D1Database, institutionId: string) {
@@ -1078,6 +1142,136 @@ async function createFirebaseEmailPasswordUser(email: string, password: string, 
   return { uid: localId };
 }
 
+function base64UrlEncode(value: string | Uint8Array) {
+  const str = typeof value === 'string' ? value : String.fromCharCode(...value);
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function pemToArrayBuffer(pem: string) {
+  const cleaned = pem.replace(/-----(BEGIN|END)[A-Z ]+-----/g, '').replace(/\s+/g, '');
+  const binary = atob(cleaned);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+async function getFirebaseAdminAccessToken(env: Env): Promise<string | null> {
+  const rawCredentials = String(env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
+  if (!rawCredentials) return null;
+
+  let credentials: Record<string, unknown>;
+  try {
+    credentials = JSON.parse(rawCredentials);
+  } catch {
+    return null;
+  }
+
+  const clientEmail = String(credentials.client_email || '').trim();
+  const privateKey = String(credentials.private_key || '').trim();
+  if (!clientEmail || !privateKey) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64UrlEncode(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const claim = base64UrlEncode(
+    JSON.stringify({
+      iss: clientEmail,
+      scope: 'https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/cloud-platform',
+      aud: 'https://oauth2.googleapis.com/token',
+      exp: now + 3600,
+      iat: now,
+    }),
+  );
+  const unsignedJwt = `${header}.${claim}`;
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToArrayBuffer(privateKey),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+
+  const signature = new Uint8Array(
+    await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, new TextEncoder().encode(unsignedJwt)),
+  );
+  const signedJwt = `${unsignedJwt}.${base64UrlEncode(signature)}`;
+
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${encodeURIComponent(signedJwt)}`,
+  });
+
+  const payload = (await tokenResponse.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!tokenResponse.ok || !payload.access_token) return null;
+  return String(payload.access_token);
+}
+
+async function lookupFirebaseUserByEmail(env: Env, email: string): Promise<string | null> {
+  const accessToken = await getFirebaseAdminAccessToken(env);
+  if (!accessToken) return null;
+
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/accounts:lookup`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email: [email] }),
+    },
+  );
+
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message = String((payload.error as Row | undefined)?.message || 'Firebase lookup failed');
+    throw new Error(message);
+  }
+
+  const users = (payload.users as Array<Record<string, unknown>> | undefined) || [];
+  if (!users.length || !users[0].localId) return null;
+  return String(users[0].localId || '');
+}
+
+async function updateFirebasePasswordByEmail(env: Env, email: string, password: string) {
+  const localId = await lookupFirebaseUserByEmail(env, email);
+  if (!localId) {
+    throw new Error(`Firebase user not found for ${email}`);
+  }
+
+  const accessToken = await getFirebaseAdminAccessToken(env);
+  if (!accessToken) {
+    throw new Error('Firebase service account credentials are required to update passwords');
+  }
+
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/accounts:update`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        localId,
+        password,
+        returnSecureToken: false,
+      }),
+    },
+  );
+
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message = String((payload.error as Row | undefined)?.message || 'Firebase password update failed');
+    throw new Error(message);
+  }
+}
+
 async function listInstitutionMembers(db: D1Database, institutionId: string, role?: string) {
   const params: unknown[] = [institutionId];
   let sql = `
@@ -1113,18 +1307,47 @@ async function listInstitutionMembers(db: D1Database, institutionId: string, rol
   }));
 }
 
-async function listCoursesForInstitution(db: D1Database, institutionId: string) {
-  return dbAll<Row>(
-    db,
-    `SELECT c.*,
-            c.title AS course_name,
-            pu.full_name AS teacher_name
-     FROM courses c
-     LEFT JOIN platform_users pu ON pu.uid = c.teacher_id
-     WHERE c.institution_id = ?
-     ORDER BY c.created_at DESC`,
-    [institutionId],
-  );
+async function listCoursesForInstitution(db: D1Database, institutionId: string, teacherId?: string) {
+  const params: unknown[] = [institutionId];
+  let sql = `
+    SELECT c.*,
+           c.title AS course_name,
+           pu.full_name AS teacher_name
+    FROM courses c
+    LEFT JOIN platform_users pu ON pu.uid = c.teacher_id
+    WHERE c.institution_id = ?
+  `;
+  if (teacherId) {
+    sql += ' AND c.teacher_id = ?';
+    params.push(teacherId);
+  }
+  sql += ' ORDER BY c.created_at DESC';
+  return dbAll<Row>(db, sql, params);
+}
+
+function isInstitutionAdminRole(role: string | null | undefined) {
+  return role === 'owner' || role === 'admin';
+}
+
+function isAssignedCourseTeacher(courseRow: Row, userId: string) {
+  return String(courseRow.teacher_id || '') === userId;
+}
+
+function canMutateCourse(
+  courseRow: Row,
+  membership: { role?: string } | null | undefined,
+  userId: string,
+  isPlatformAdmin: boolean,
+) {
+  if (isPlatformAdmin) return true;
+  const role = String(membership?.role || '');
+  if (isInstitutionAdminRole(role)) return true;
+  if (role === 'teacher' && isAssignedCourseTeacher(courseRow, userId)) return true;
+  return false;
+}
+
+async function getTeacherCourseIds(db: D1Database, institutionId: string, teacherId: string) {
+  return getVisibleCoursesForUser(db, institutionId, teacherId, 'teacher');
 }
 
 async function listModulesForCourse(db: D1Database, courseId: string) {
@@ -1825,6 +2048,7 @@ async function listSubmissionsForInstitution(
   institutionId: string,
   assignmentId?: string,
   studentId?: string,
+  courseIds?: string[],
 ) {
   const params: unknown[] = [institutionId];
   let sql = `
@@ -1844,6 +2068,10 @@ async function listSubmissionsForInstitution(
   if (studentId) {
     sql += ' AND s.student_id = ?';
     params.push(studentId);
+  }
+  if (courseIds && courseIds.length > 0) {
+    sql += ` AND a.course_id IN (${courseIds.map(() => '?').join(',')})`;
+    params.push(...courseIds);
   }
   sql += ' ORDER BY s.submitted_at DESC';
   return dbAll<Row>(db, sql, params);
@@ -2120,6 +2348,99 @@ async function listCertificatesForInstitution(db: D1Database, institutionId: str
   return dbAll<Row>(db, sql, params);
 }
 
+function mapCmsPage(row: Row) {
+  return {
+    id: String(row.id || ''),
+    institutionId: String(row.institution_id || ''),
+    institution_id: String(row.institution_id || ''),
+    slug: String(row.slug || ''),
+    title: String(row.title || ''),
+    body: String(row.body || ''),
+    published: Number(row.published ?? 0) === 1,
+    createdAt: row.created_at || null,
+    created_at: row.created_at || null,
+    updatedAt: row.updated_at || null,
+    updated_at: row.updated_at || null,
+  };
+}
+
+function mapFaq(row: Row) {
+  return {
+    id: String(row.id || ''),
+    institutionId: String(row.institution_id || ''),
+    institution_id: String(row.institution_id || ''),
+    question: String(row.question || ''),
+    answer: String(row.answer || ''),
+    orderIndex: Number(row.order_index ?? 0),
+    order_index: Number(row.order_index ?? 0),
+    createdAt: row.created_at || null,
+    created_at: row.created_at || null,
+  };
+}
+
+function mapBanner(row: Row) {
+  const imageKey = (row.image_r2_key as string | null) || null;
+  return {
+    id: String(row.id || ''),
+    institutionId: String(row.institution_id || ''),
+    institution_id: String(row.institution_id || ''),
+    title: String(row.title || ''),
+    body: String(row.body || ''),
+    imageR2Key: imageKey,
+    image_r2_key: imageKey,
+    imageUrl: imageKey ? publicObjectUrl(imageKey) : null,
+    linkUrl: (row.link_url as string | null) || null,
+    link_url: (row.link_url as string | null) || null,
+    active: Number(row.active ?? 1) === 1,
+    createdAt: row.created_at || null,
+    created_at: row.created_at || null,
+  };
+}
+
+const PERMISSION_MATRIX_KEYS = [
+  'courses.create',
+  'courses.edit',
+  'students.manage',
+  'students.suspend',
+  'finance.view',
+  'finance.refund',
+  'certificates.issue',
+  'announcements.send',
+  'cms.manage',
+] as const;
+
+const PERMISSION_MATRIX_ROLES = ['teacher', 'student'] as const;
+
+async function listRolePermissions(db: D1Database, institutionId: string) {
+  const rows = await dbAll<Row>(
+    db,
+    'SELECT * FROM role_permissions WHERE institution_id = ? ORDER BY role ASC, permission_key ASC',
+    [institutionId],
+  );
+  const overrides = new Map<string, boolean>();
+  for (const row of rows) {
+    overrides.set(`${row.role}:${row.permission_key}`, Number(row.allowed ?? 1) === 1);
+  }
+
+  const permissions = PERMISSION_MATRIX_ROLES.flatMap((role) =>
+    PERMISSION_MATRIX_KEYS.map((permissionKey) => ({
+      role,
+      permissionKey,
+      permission_key: permissionKey,
+      allowed: overrides.has(`${role}:${permissionKey}`)
+        ? overrides.get(`${role}:${permissionKey}`)
+        : true,
+    })),
+  );
+
+  return {
+    permissions,
+    ownerBypass: true,
+    keys: PERMISSION_MATRIX_KEYS,
+    roles: PERMISSION_MATRIX_ROLES,
+  };
+}
+
 async function listTimetableEntries(db: D1Database, institutionId: string, teacherId?: string) {
   const params: unknown[] = [institutionId];
   let sql = `
@@ -2386,6 +2707,38 @@ export function createApp(options: CreateAppOptions = {}) {
     });
   });
 
+  app.get('/api/public/certificates/verify/:code', async (context) => {
+    const code = decodeURIComponent(context.req.param('code') || '').trim();
+    if (!code) return context.json({ error: 'Verification code is required' }, 400);
+    const row = await dbFirst<Row>(
+      context.env.DB,
+      `SELECT cert.*,
+              pu.full_name AS student_name,
+              c.title AS course_name,
+              i.name AS institution_name
+       FROM certificates cert
+       JOIN platform_users pu ON pu.uid = cert.student_id
+       JOIN courses c ON c.id = cert.course_id
+       JOIN institutions i ON i.id = cert.institution_id
+       WHERE cert.verification_code = ?
+       LIMIT 1`,
+      [code],
+    );
+    if (!row) {
+      return context.json({ valid: false, error: 'Certificate not found' }, 404);
+    }
+    const status = String(row.status || 'issued');
+    return context.json({
+      valid: status === 'issued',
+      status,
+      verificationCode: row.verification_code,
+      studentName: row.student_name,
+      courseName: row.course_name,
+      institutionName: row.institution_name,
+      issuedDate: row.issued_date,
+    });
+  });
+
   app.get('/api/storage/object', async (context) => {
     const header = context.req.header('Authorization') || '';
     const match = /^Bearer\s+(.+)$/.exec(header);
@@ -2431,9 +2784,16 @@ export function createApp(options: CreateAppOptions = {}) {
       ],
     );
 
-    const appBaseUrl = normalizeBaseUrl(context.env.APP_URL);
-    const resetUrl = new URL(`/?resetToken=${encodeURIComponent(token)}`, appBaseUrl).toString();
-    void sendTransactionalEmail(context.env, {
+      const appBaseUrl = normalizeBaseUrl(context.env.APP_URL);
+    let resetPath = `/?resetToken=${encodeURIComponent(token)}`;
+    if (body.institutionId) {
+      const institution = await getInstitutionById(context.env.DB, body.institutionId);
+      if (institution?.slug) {
+        resetPath = `/${institution.slug}/login?resetToken=${encodeURIComponent(token)}`;
+      }
+    }
+    const resetUrl = new URL(resetPath, appBaseUrl).toString();
+    const emailResult = await sendTransactionalEmail(context.env, {
       to: email,
       toName: email,
       subject: 'Reset your Thutify password',
@@ -2449,15 +2809,25 @@ export function createApp(options: CreateAppOptions = {}) {
           <p>If you did not request this reset, you can ignore this email.</p>
         </div>
       `,
-    }).catch((error) => {
-      console.error('Failed to send reset email', error);
     });
+
+    if (!emailResult) {
+      return context.json({ error: 'Failed to send password reset email. Please verify your email provider configuration.' }, 502);
+    }
 
     return context.json({ success: true, token, expiresAt });
   });
 
   app.post('/api/auth/password-reset/:token', async (context) => {
     const token = context.req.param('token');
+    const body = await parseRequestBody<{ newPassword?: string }>(context.req.raw);
+    const newPassword = String(body.newPassword || '');
+
+    if (!newPassword) return context.json({ error: 'New password is required' }, 400);
+    if (newPassword.length < 6) {
+      return context.json({ error: 'Password must be at least 6 characters long' }, 400);
+    }
+
     const row = await dbFirst<Row>(
       context.env.DB,
       'SELECT * FROM password_reset_requests WHERE token = ? LIMIT 1',
@@ -2470,15 +2840,43 @@ export function createApp(options: CreateAppOptions = {}) {
       return context.json({ error: 'Reset token expired' }, 410);
     }
 
+    const email = String(row.email || '').trim();
+    if (!email) return context.json({ error: 'Reset request is malformed' }, 500);
+
+    try {
+      await updateFirebasePasswordByEmail(context.env, email, newPassword);
+    } catch (error) {
+      console.error('Failed to update Firebase password', error);
+      return context.json({ error: 'Unable to update password at this time' }, 500);
+    }
+
     await dbRun(
       context.env.DB,
       'UPDATE password_reset_requests SET used_at = ? WHERE token = ?',
       [nowIso(), token],
     );
 
+    const emailResult = await sendTransactionalEmail(context.env, {
+      to: email,
+      toName: email,
+      subject: 'Your password has been reset',
+      text: `Your password for ${email} has been successfully reset. If you did not perform this change, please contact support immediately.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; color: #111827;">
+          <h2 style="margin-bottom: 8px;">Password reset successful</h2>
+          <p>Your password for <strong>${email}</strong> has been successfully reset.</p>
+          <p>If you did not request this change, please contact support immediately.</p>
+        </div>
+      `,
+    });
+
+    if (!emailResult) {
+      return context.json({ error: 'Password updated but confirmation email failed to send' }, 502);
+    }
+
     return context.json({
       success: true,
-      message: 'Password reset request recorded. Apply the new password through Firebase Auth in the client.',
+      message: 'Password has been reset successfully.',
     });
   });
 
@@ -3162,9 +3560,27 @@ export function createApp(options: CreateAppOptions = {}) {
     if (status) {
       students = students.filter((student) => String(student.status || '').toLowerCase() === status);
     }
+    const membershipRole = String(access.membership?.role || '');
+    const isTeacherViewer = membershipRole === 'teacher' && !platformUser.isPlatformAdmin;
+
+    if (isTeacherViewer && courseId) {
+      const courseRow = await getCourseRow(context.env.DB, courseId);
+      if (!courseRow || !isAssignedCourseTeacher(courseRow, verified.uid)) {
+        return context.json({ error: 'Forbidden' }, 403);
+      }
+    }
+
     if (courseId) {
       students = students.filter((student) =>
         (student.enrolledCourses || []).some((enrollment) => String(enrollment.course_id || enrollment.courseId || '') === courseId),
+      );
+    } else if (isTeacherViewer) {
+      const teacherCourseIds = await getTeacherCourseIds(context.env.DB, institutionId, verified.uid);
+      const allowed = new Set(teacherCourseIds);
+      students = students.filter((student) =>
+        (student.enrolledCourses || []).some((enrollment) =>
+          allowed.has(String(enrollment.course_id || enrollment.courseId || '')),
+        ),
       );
     }
 
@@ -3189,6 +3605,17 @@ export function createApp(options: CreateAppOptions = {}) {
 
     const student = await getStudentDetail(context.env.DB, institutionId, context.req.param('studentId'));
     if (!student) return context.json({ error: 'Student not found' }, 404);
+
+    const membershipRole = String(access.membership?.role || '');
+    if (membershipRole === 'teacher' && !platformUser.isPlatformAdmin) {
+      const teacherCourseIds = await getTeacherCourseIds(context.env.DB, institutionId, verified.uid);
+      const allowed = new Set(teacherCourseIds);
+      const canView = (student.enrolledCourses || []).some((enrollment: { course_id?: string; courseId?: string }) =>
+        allowed.has(String(enrollment.course_id || enrollment.courseId || '')),
+      );
+      if (!canView) return context.json({ error: 'Forbidden' }, 403);
+    }
+
     return context.json(student);
   });
 
@@ -3548,14 +3975,43 @@ export function createApp(options: CreateAppOptions = {}) {
     ]);
     if (access.error) return access.error;
 
-    const body = await parseRequestBody<Partial<InstitutionInput> & { status?: string }>(context.req.raw);
+    const body = await parseRequestBody<
+      Partial<InstitutionInput> & {
+        status?: string;
+        email_sender?: string;
+        emailSender?: string;
+        payment_gateway?: string;
+        paymentGateway?: string;
+        email_notifications?: boolean;
+        emailNotifications?: boolean;
+        sms_notifications?: boolean;
+        smsNotifications?: boolean;
+        announcement_email_enabled?: boolean;
+        announcementEmailEnabled?: boolean;
+        timezone?: string;
+        currency?: string;
+        language?: string;
+        locale?: string;
+      }
+    >(context.req.raw);
+    const emailNotifications = body.emailNotifications ?? body.email_notifications;
+    const smsNotifications = body.smsNotifications ?? body.sms_notifications;
+    const announcementEmailEnabled = body.announcementEmailEnabled ?? body.announcement_email_enabled;
     const fields: Row = {
       name: body.name,
-      logo_url: body.logoUrl,
-      primary_color: body.primaryColor,
+      logo_url: body.logoUrl ?? body.logo_url,
+      primary_color: body.primaryColor ?? body.primary_color,
       country: body.country,
-      institution_type: body.institutionType,
+      institution_type: body.institutionType ?? body.institution_type,
       status: body.status,
+      timezone: body.timezone,
+      currency: body.currency,
+      locale: body.language ?? body.locale,
+      smtp_from_email: body.emailSender ?? body.email_sender,
+      payment_gateway: body.paymentGateway ?? body.payment_gateway,
+      email_notifications: emailNotifications === undefined ? undefined : emailNotifications ? 1 : 0,
+      sms_notifications: smsNotifications === undefined ? undefined : smsNotifications ? 1 : 0,
+      announcement_email_enabled: announcementEmailEnabled === undefined ? undefined : announcementEmailEnabled ? 1 : 0,
       updated_at: nowIso(),
     };
     const update = buildUpdateStatement('institutions', fields);
@@ -3790,17 +4246,117 @@ export function createApp(options: CreateAppOptions = {}) {
     });
   });
 
+  app.get('/api/institutions/:id/teachers/me', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['teacher']);
+    if (access.error) return access.error;
+    const teacher = await getTeacherDetail(context.env.DB, institutionId, verified.uid);
+    if (!teacher) return context.json({ error: 'Teacher profile not found' }, 404);
+    return context.json(teacher);
+  });
+
+  app.patch('/api/institutions/:id/teachers/me', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['teacher']);
+    if (access.error) return access.error;
+
+    const teacher = await getTeacherDetail(context.env.DB, institutionId, verified.uid);
+    if (!teacher) return context.json({ error: 'Teacher profile not found' }, 404);
+
+    const body = await parseRequestBody<{
+      fullName?: string;
+      phone?: string;
+      gender?: string;
+      address?: string;
+      qualification?: string;
+      profileImageUrl?: string;
+      profile_image_url?: string;
+      notes?: string;
+    }>(context.req.raw);
+
+    const updatedAt = nowIso();
+    const platformUpdate = buildUpdateStatement(
+      'platform_users',
+      {
+        full_name: body.fullName,
+        phone: body.phone,
+        photo_url: body.profileImageUrl || body.profile_image_url,
+        updated_at: updatedAt,
+      },
+      'uid',
+    );
+    if (platformUpdate.values.length > 0) {
+      await dbRun(context.env.DB, platformUpdate.sql, [...platformUpdate.values, verified.uid]);
+    }
+
+    await updateTeacherProfileFields(context.env.DB, institutionId, verified.uid, {
+      phone: body.phone || undefined,
+      gender: body.gender ?? undefined,
+      address: body.address ?? undefined,
+      qualification: body.qualification ?? undefined,
+      profile_image_url: body.profileImageUrl || body.profile_image_url || undefined,
+      notes: body.notes ?? undefined,
+      updated_at: updatedAt,
+    });
+
+    return context.json(await getTeacherDetail(context.env.DB, institutionId, verified.uid));
+  });
+
+  app.get('/api/institutions/:id/teachers/me/attendance', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['teacher']);
+    if (access.error) return access.error;
+    return context.json(
+      await listTeacherAttendanceRecords(
+        context.env.DB,
+        institutionId,
+        verified.uid,
+        context.req.query('month') || undefined,
+      ),
+    );
+  });
+
+  app.get('/api/institutions/:id/teachers/me/performance', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['teacher']);
+    if (access.error) return access.error;
+    const teacher = await getTeacherDetail(context.env.DB, institutionId, verified.uid);
+    if (!teacher) return context.json({ error: 'Teacher profile not found' }, 404);
+    return context.json({
+      averageStudentScore: teacher.averageStudentScore,
+      averageQuizScore: teacher.averageQuizScore,
+      averageAssignmentGrade: teacher.averageAssignmentGrade,
+      attendancePercentage: teacher.attendancePercentage,
+      assignedStudentsCount: teacher.assignedStudentsCount,
+      assignedCoursesCount: teacher.assignedCoursesCount,
+      courseCompletionRate: teacher.courseCompletionRate,
+    });
+  });
+
   app.get('/api/institutions/:id/teachers/:teacherId', async (context) => {
     const verified = context.get('user');
     const platformUser = context.get('platformUser');
     const institutionId = context.req.param('id');
+    const teacherId = context.req.param('teacherId');
     const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, [
       'owner',
       'admin',
+      'teacher',
     ]);
     if (access.error) return access.error;
+    if (!canAccessTeacherRecord(teacherId, verified.uid, access.membership, Boolean(platformUser.isPlatformAdmin))) {
+      return context.json({ error: 'Forbidden' }, 403);
+    }
 
-    const teacher = await getTeacherDetail(context.env.DB, institutionId, context.req.param('teacherId'));
+    const teacher = await getTeacherDetail(context.env.DB, institutionId, teacherId);
     if (!teacher) return context.json({ error: 'Teacher not found' }, 404);
     return context.json(teacher);
   });
@@ -4206,17 +4762,22 @@ export function createApp(options: CreateAppOptions = {}) {
     const verified = context.get('user');
     const platformUser = context.get('platformUser');
     const institutionId = context.req.param('id');
+    const teacherId = context.req.param('teacherId');
     const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, [
       'owner',
       'admin',
+      'teacher',
     ]);
     if (access.error) return access.error;
+    if (!canAccessTeacherRecord(teacherId, verified.uid, access.membership, Boolean(platformUser.isPlatformAdmin))) {
+      return context.json({ error: 'Forbidden' }, 403);
+    }
 
     return context.json(
       await listTeacherAttendanceRecords(
         context.env.DB,
         institutionId,
-        context.req.param('teacherId'),
+        teacherId,
         context.req.query('month') || undefined,
       ),
     );
@@ -4276,13 +4837,18 @@ export function createApp(options: CreateAppOptions = {}) {
     const verified = context.get('user');
     const platformUser = context.get('platformUser');
     const institutionId = context.req.param('id');
+    const teacherId = context.req.param('teacherId');
     const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, [
       'owner',
       'admin',
+      'teacher',
     ]);
     if (access.error) return access.error;
+    if (!canAccessTeacherRecord(teacherId, verified.uid, access.membership, Boolean(platformUser.isPlatformAdmin))) {
+      return context.json({ error: 'Forbidden' }, 403);
+    }
 
-    const teacher = await getTeacherDetail(context.env.DB, institutionId, context.req.param('teacherId'));
+    const teacher = await getTeacherDetail(context.env.DB, institutionId, teacherId);
     if (!teacher) return context.json({ error: 'Teacher not found' }, 404);
 
     return context.json({
@@ -4302,7 +4868,10 @@ export function createApp(options: CreateAppOptions = {}) {
     const institutionId = context.req.param('id');
     const access = await requireMembership(context.env.DB, platformUser, verified, institutionId);
     if (access.error) return access.error;
-    return context.json(await listCoursesForInstitution(context.env.DB, institutionId));
+    const membershipRole = String(access.membership?.role || '');
+    const teacherFilter =
+      membershipRole === 'teacher' && !platformUser.isPlatformAdmin ? verified.uid : undefined;
+    return context.json(await listCoursesForInstitution(context.env.DB, institutionId, teacherFilter));
   });
 
   app.post('/api/institutions/:id/courses', async (context) => {
@@ -4312,7 +4881,6 @@ export function createApp(options: CreateAppOptions = {}) {
     const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, [
       'owner',
       'admin',
-      'teacher',
     ]);
     if (access.error) return access.error;
 
@@ -4361,6 +4929,13 @@ export function createApp(options: CreateAppOptions = {}) {
     const institutionId = String(courseRow.institution_id || '');
     const access = await requireMembership(context.env.DB, platformUser, verified, institutionId);
     if (access.error) return access.error;
+    if (
+      String(access.membership?.role || '') === 'teacher' &&
+      !platformUser.isPlatformAdmin &&
+      !isAssignedCourseTeacher(courseRow, verified.uid)
+    ) {
+      return context.json({ error: 'Forbidden' }, 403);
+    }
     const course = await getCourseWithModules(context.env.DB, courseId, verified.uid);
     return context.json(course);
   });
@@ -4379,13 +4954,28 @@ export function createApp(options: CreateAppOptions = {}) {
       'teacher',
     ]);
     if (access.error) return access.error;
+    if (!canMutateCourse(courseRow, access.membership, verified.uid, Boolean(platformUser.isPlatformAdmin))) {
+      return context.json({ error: 'Forbidden' }, 403);
+    }
+    const courseEditPerm = await requirePermission(
+      context.env.DB,
+      institutionId,
+      access.membership,
+      'courses.edit',
+      Boolean(platformUser.isPlatformAdmin),
+    );
+    if (courseEditPerm?.error) return courseEditPerm.error;
 
     const body = await parseRequestBody<Partial<CourseInput> & Row>(context.req.raw);
     const teacherFieldProvided = 'teacherId' in body || 'teacher_id' in body;
+    const membershipRole = String(access.membership?.role || '');
     const fields: Row = {
       title: body.title,
       description: body.description,
-      teacher_id: teacherFieldProvided ? String(body.teacherId || body.teacher_id || '').trim() || null : undefined,
+      teacher_id:
+        teacherFieldProvided && isInstitutionAdminRole(membershipRole)
+          ? String(body.teacherId || body.teacher_id || '').trim() || null
+          : undefined,
       category: body.category,
       status: body.status,
       fee: body.fee,
@@ -4413,6 +5003,9 @@ export function createApp(options: CreateAppOptions = {}) {
       'teacher',
     ]);
     if (access.error) return access.error;
+    if (!canMutateCourse(courseRow, access.membership, verified.uid, Boolean(platformUser.isPlatformAdmin))) {
+      return context.json({ error: 'Forbidden' }, 403);
+    }
     await dbRun(context.env.DB, 'DELETE FROM courses WHERE id = ?', [context.req.param('id')]);
     await syncTeacherProfileCourseAssignments(context.env.DB, String(courseRow.institution_id || ''));
     return context.json({ success: true });
@@ -4812,6 +5405,14 @@ export function createApp(options: CreateAppOptions = {}) {
       'teacher',
     ]);
     if (access.error) return access.error;
+    const assignmentPerm = await requirePermission(
+      context.env.DB,
+      institutionId,
+      access.membership,
+      'courses.edit',
+      Boolean(platformUser.isPlatformAdmin),
+    );
+    if (assignmentPerm?.error) return assignmentPerm.error;
 
     const body = await parseRequestBody<AssignmentInput & Row>(context.req.raw);
     const courseId = await resolveCourseId(context.env.DB, institutionId, body as Row);
@@ -4902,12 +5503,17 @@ export function createApp(options: CreateAppOptions = {}) {
     const institutionId = context.req.param('id');
     const access = await requireMembership(context.env.DB, platformUser, verified, institutionId);
     if (access.error) return access.error;
+    let courseIds: string[] | undefined;
+    if (String(access.membership?.role || '') === 'teacher' && !platformUser.isPlatformAdmin) {
+      courseIds = await getTeacherCourseIds(context.env.DB, institutionId, verified.uid);
+    }
     return context.json(
       await listSubmissionsForInstitution(
         context.env.DB,
         institutionId,
         context.req.query('assignment_id') || undefined,
         context.req.query('student_id') || undefined,
+        courseIds,
       ),
     );
   });
@@ -4970,6 +5576,15 @@ export function createApp(options: CreateAppOptions = {}) {
       'teacher',
     ]);
     if (access.error) return access.error;
+    const assignmentCourse = await getCourseRow(context.env.DB, String(assignment.course_id || ''));
+    if (
+      assignmentCourse &&
+      String(access.membership?.role || '') === 'teacher' &&
+      !platformUser.isPlatformAdmin &&
+      !isAssignedCourseTeacher(assignmentCourse, verified.uid)
+    ) {
+      return context.json({ error: 'Forbidden' }, 403);
+    }
     return context.json(await listSubmissionsForInstitution(context.env.DB, String(assignment.institution_id || ''), context.req.param('id')));
   });
 
@@ -4986,6 +5601,16 @@ export function createApp(options: CreateAppOptions = {}) {
       'teacher',
     ]);
     if (access.error) return access.error;
+    const assignment = await getAssignmentRow(context.env.DB, String(submission.assignment_id || ''));
+    const assignmentCourse = assignment
+      ? await getCourseRow(context.env.DB, String(assignment.course_id || ''))
+      : null;
+    if (
+      assignmentCourse &&
+      !canMutateCourse(assignmentCourse, access.membership, verified.uid, Boolean(platformUser.isPlatformAdmin))
+    ) {
+      return context.json({ error: 'Forbidden' }, 403);
+    }
     const body = await parseRequestBody<{ grade?: number; feedback?: string }>(context.req.raw);
     await dbRun(
       context.env.DB,
@@ -5558,9 +6183,18 @@ export function createApp(options: CreateAppOptions = {}) {
     const institutionId = context.req.param('id');
     const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin', 'teacher']);
     if (access.error) return access.error;
+    const announcementPerm = await requirePermission(
+      context.env.DB,
+      institutionId,
+      access.membership,
+      'announcements.send',
+      Boolean(platformUser.isPlatformAdmin),
+    );
+    if (announcementPerm?.error) return announcementPerm.error;
     const body = await parseRequestBody<AnnouncementInput>(context.req.raw);
     if (!body.content) return context.json({ error: 'Announcement content is required' }, 400);
     const announcementId = newId();
+    const announcementTitle = body.title || String(body.content).slice(0, 64);
     await dbRun(
       context.env.DB,
       `INSERT INTO announcements
@@ -5570,7 +6204,7 @@ export function createApp(options: CreateAppOptions = {}) {
         announcementId,
         institutionId,
         body.courseId || body.course_id || null,
-        body.title || String(body.content).slice(0, 64),
+        announcementTitle,
         body.content,
         verified.uid,
         String(platformUser.fullName || platformUser.full_name || verified.name || ''),
@@ -5579,6 +6213,35 @@ export function createApp(options: CreateAppOptions = {}) {
         nowIso(),
       ],
     );
+
+    const institution = await getInstitutionById(context.env.DB, institutionId);
+    if (institution?.announcementEmailEnabled) {
+      const memberRows = await dbAll<Row>(
+        context.env.DB,
+        `SELECT DISTINCT pu.email, pu.full_name
+         FROM institution_users iu
+         JOIN platform_users pu ON pu.uid = iu.user_id
+         WHERE iu.institution_id = ?
+           AND iu.status = 'active'
+           AND pu.email IS NOT NULL
+           AND pu.email != ''`,
+        [institutionId],
+      );
+      const instName = String(institution.name || 'Your institution');
+      for (const member of memberRows) {
+        const email = String(member.email || '').trim();
+        if (!email) continue;
+        void sendTransactionalEmail(context.env, {
+          to: email,
+          toName: String(member.full_name || email),
+          subject: `${instName}: ${announcementTitle}`,
+          text: `${announcementTitle}\n\n${body.content}\n\n— ${instName}`,
+          html: `<p><strong>${announcementTitle}</strong></p><p>${String(body.content).replace(/\n/g, '<br/>')}</p><p>— ${instName}</p>`,
+          fromName: instName,
+        });
+      }
+    }
+
     return context.json((await listAnnouncementsForInstitution(context.env.DB, institutionId)).find((announcement) => announcement.id === announcementId) || null, 201);
   });
 
@@ -5863,23 +6526,50 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   app.post('/api/institutions/:id/certificates', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin', 'teacher']);
+    if (access.error) return access.error;
     const body = await parseRequestBody<{ studentId?: string; student_id?: string; courseId?: string; course_id?: string }>(context.req.raw);
     const certificateId = newId();
     await dbRun(
       context.env.DB,
       `INSERT INTO certificates
        (id, institution_id, student_id, course_id, verification_code, issued_date, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'issued')`,
+       VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
       [
         certificateId,
-        context.req.param('id'),
+        institutionId,
         body.studentId || body.student_id,
         body.courseId || body.course_id,
         `CERT-${Date.now()}`,
         nowIso(),
       ],
     );
-    return context.json((await listCertificatesForInstitution(context.env.DB, context.req.param('id'))).find((certificate) => certificate.id === certificateId) || null, 201);
+    return context.json((await listCertificatesForInstitution(context.env.DB, institutionId)).find((certificate) => certificate.id === certificateId) || null, 201);
+  });
+
+  app.patch('/api/certificates/:id', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const certificate = await getCertificateRow(context.env.DB, context.req.param('id'));
+    if (!certificate) return context.json({ error: 'Certificate not found' }, 404);
+    const institutionId = String(certificate.institution_id || '');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const body = await parseRequestBody<{ status?: string }>(context.req.raw);
+    const nextStatus = String(body.status || '').trim();
+    if (!['issued', 'revoked', 'pending'].includes(nextStatus)) {
+      return context.json({ error: 'Invalid certificate status' }, 400);
+    }
+    await dbRun(
+      context.env.DB,
+      'UPDATE certificates SET status = ?, issued_date = ? WHERE id = ?',
+      [nextStatus, nextStatus === 'issued' ? nowIso() : certificate.issued_date, context.req.param('id')],
+    );
+    const rows = await listCertificatesForInstitution(context.env.DB, institutionId);
+    return context.json(rows.find((row) => String(row.id) === context.req.param('id')) || null);
   });
 
   app.post('/api/certificates/:id/generate', async (context) => {
@@ -6179,6 +6869,398 @@ export function createApp(options: CreateAppOptions = {}) {
     } catch (error) {
       return context.json({ error: error instanceof Error ? error.message : 'Upload failed' }, 400);
     }
+  });
+
+  app.post('/api/institutions/:id/email/test', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const body = await parseRequestBody<{ to?: string }>(context.req.raw);
+    const institution = await getInstitutionById(context.env.DB, institutionId);
+    const recipient = String(body.to || platformUser.email || verified.email || '').trim();
+    if (!recipient) return context.json({ error: 'Recipient email is required' }, 400);
+    const instName = String(institution?.name || 'LearnFlow');
+    const result = await sendTransactionalEmail(context.env, {
+      to: recipient,
+      toName: String(platformUser.fullName || platformUser.full_name || recipient),
+      subject: `${instName} — Test Email`,
+      text: `This is a test email from ${instName}. Your SendGrid integration is working.`,
+      html: `<p>This is a test email from <strong>${instName}</strong>.</p><p>Your SendGrid integration is working.</p>`,
+      fromName: instName,
+    });
+    if (!result) {
+      return context.json({ error: 'Email delivery failed. Check SENDGRID_API_KEY and EMAIL env vars.' }, 502);
+    }
+    return context.json({ success: true, to: recipient });
+  });
+
+  app.get('/api/institutions/:id/permissions', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    return context.json(await listRolePermissions(context.env.DB, institutionId));
+  });
+
+  app.put('/api/institutions/:id/permissions', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const body = await parseRequestBody<{
+      permissions?: Array<{ role?: string; permissionKey?: string; permission_key?: string; allowed?: boolean }>;
+    }>(context.req.raw);
+    const entries = body.permissions || [];
+    for (const entry of entries) {
+      const role = String(entry.role || '').trim();
+      const permissionKey = String(entry.permissionKey || entry.permission_key || '').trim();
+      if (!PERMISSION_MATRIX_ROLES.includes(role as (typeof PERMISSION_MATRIX_ROLES)[number])) continue;
+      if (!PERMISSION_MATRIX_KEYS.includes(permissionKey as (typeof PERMISSION_MATRIX_KEYS)[number])) continue;
+      const allowed = entry.allowed ? 1 : 0;
+      const existing = await dbFirst<Row>(
+        context.env.DB,
+        'SELECT id FROM role_permissions WHERE institution_id = ? AND role = ? AND permission_key = ? LIMIT 1',
+        [institutionId, role, permissionKey],
+      );
+      if (existing?.id) {
+        await dbRun(context.env.DB, 'UPDATE role_permissions SET allowed = ? WHERE id = ?', [allowed, existing.id]);
+      } else {
+        await dbRun(
+          context.env.DB,
+          'INSERT INTO role_permissions (id, institution_id, role, permission_key, allowed, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          [newId(), institutionId, role, permissionKey, allowed, nowIso()],
+        );
+      }
+    }
+    return context.json(await listRolePermissions(context.env.DB, institutionId));
+  });
+
+  app.get('/api/institutions/:id/cms/pages', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const rows = await dbAll<Row>(
+      context.env.DB,
+      'SELECT * FROM cms_pages WHERE institution_id = ? ORDER BY updated_at DESC',
+      [institutionId],
+    );
+    return context.json(rows.map(mapCmsPage));
+  });
+
+  app.post('/api/institutions/:id/cms/pages', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const body = await parseRequestBody<{ title?: string; slug?: string; body?: string; published?: boolean }>(context.req.raw);
+    if (!body.title) return context.json({ error: 'Page title is required' }, 400);
+    const pageId = newId();
+    const pageSlug = slugify(body.slug || body.title);
+    await dbRun(
+      context.env.DB,
+      `INSERT INTO cms_pages (id, institution_id, slug, title, body, published, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [pageId, institutionId, pageSlug, body.title, body.body || '', body.published ? 1 : 0, nowIso(), nowIso()],
+    );
+    const row = await dbFirst<Row>(context.env.DB, 'SELECT * FROM cms_pages WHERE id = ? LIMIT 1', [pageId]);
+    return context.json(mapCmsPage(row || {}), 201);
+  });
+
+  app.put('/api/institutions/:id/cms/pages/:pageId', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const body = await parseRequestBody<{ title?: string; slug?: string; body?: string; published?: boolean }>(context.req.raw);
+    const fields: Row = {
+      title: body.title,
+      slug: body.slug ? slugify(body.slug) : undefined,
+      body: body.body,
+      published: body.published === undefined ? undefined : body.published ? 1 : 0,
+      updated_at: nowIso(),
+    };
+    const update = buildUpdateStatement('cms_pages', fields);
+    await dbRun(context.env.DB, update.sql, [...update.values, context.req.param('pageId')]);
+    const row = await dbFirst<Row>(
+      context.env.DB,
+      'SELECT * FROM cms_pages WHERE id = ? AND institution_id = ? LIMIT 1',
+      [context.req.param('pageId'), institutionId],
+    );
+    if (!row) return context.json({ error: 'Page not found' }, 404);
+    return context.json(mapCmsPage(row));
+  });
+
+  app.delete('/api/institutions/:id/cms/pages/:pageId', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    await dbRun(
+      context.env.DB,
+      'DELETE FROM cms_pages WHERE id = ? AND institution_id = ?',
+      [context.req.param('pageId'), institutionId],
+    );
+    return context.json({ success: true });
+  });
+
+  app.get('/api/institutions/:id/cms/faqs', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const rows = await dbAll<Row>(
+      context.env.DB,
+      'SELECT * FROM faqs WHERE institution_id = ? ORDER BY order_index ASC, created_at ASC',
+      [institutionId],
+    );
+    return context.json(rows.map(mapFaq));
+  });
+
+  app.post('/api/institutions/:id/cms/faqs', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const body = await parseRequestBody<{ question?: string; answer?: string; orderIndex?: number; order_index?: number }>(context.req.raw);
+    if (!body.question || !body.answer) return context.json({ error: 'Question and answer are required' }, 400);
+    const faqId = newId();
+    await dbRun(
+      context.env.DB,
+      'INSERT INTO faqs (id, institution_id, question, answer, order_index, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [faqId, institutionId, body.question, body.answer, body.orderIndex ?? body.order_index ?? 0, nowIso()],
+    );
+    const row = await dbFirst<Row>(context.env.DB, 'SELECT * FROM faqs WHERE id = ? LIMIT 1', [faqId]);
+    return context.json(mapFaq(row || {}), 201);
+  });
+
+  app.put('/api/institutions/:id/cms/faqs/:faqId', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const body = await parseRequestBody<{ question?: string; answer?: string; orderIndex?: number; order_index?: number }>(context.req.raw);
+    const fields: Row = {
+      question: body.question,
+      answer: body.answer,
+      order_index: body.orderIndex ?? body.order_index,
+    };
+    const update = buildUpdateStatement('faqs', fields);
+    await dbRun(context.env.DB, update.sql, [...update.values, context.req.param('faqId')]);
+    const row = await dbFirst<Row>(
+      context.env.DB,
+      'SELECT * FROM faqs WHERE id = ? AND institution_id = ? LIMIT 1',
+      [context.req.param('faqId'), institutionId],
+    );
+    if (!row) return context.json({ error: 'FAQ not found' }, 404);
+    return context.json(mapFaq(row));
+  });
+
+  app.delete('/api/institutions/:id/cms/faqs/:faqId', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    await dbRun(
+      context.env.DB,
+      'DELETE FROM faqs WHERE id = ? AND institution_id = ?',
+      [context.req.param('faqId'), institutionId],
+    );
+    return context.json({ success: true });
+  });
+
+  app.get('/api/institutions/:id/cms/banners', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const rows = await dbAll<Row>(
+      context.env.DB,
+      'SELECT * FROM banners WHERE institution_id = ? ORDER BY created_at DESC',
+      [institutionId],
+    );
+    return context.json(rows.map(mapBanner));
+  });
+
+  app.post('/api/institutions/:id/cms/banners', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const body = await parseRequestBody<{
+      title?: string;
+      body?: string;
+      linkUrl?: string;
+      link_url?: string;
+      active?: boolean;
+      imageR2Key?: string;
+      image_r2_key?: string;
+    }>(context.req.raw);
+    if (!body.title) return context.json({ error: 'Banner title is required' }, 400);
+    const bannerId = newId();
+    const imageKey = body.imageR2Key || body.image_r2_key || null;
+    await dbRun(
+      context.env.DB,
+      `INSERT INTO banners (id, institution_id, title, body, image_r2_key, link_url, active, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        bannerId,
+        institutionId,
+        body.title,
+        body.body || '',
+        imageKey,
+        body.linkUrl || body.link_url || null,
+        body.active === false ? 0 : 1,
+        nowIso(),
+      ],
+    );
+    const row = await dbFirst<Row>(context.env.DB, 'SELECT * FROM banners WHERE id = ? LIMIT 1', [bannerId]);
+    return context.json(mapBanner(row || {}), 201);
+  });
+
+  app.put('/api/institutions/:id/cms/banners/:bannerId', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    const body = await parseRequestBody<{
+      title?: string;
+      body?: string;
+      linkUrl?: string;
+      link_url?: string;
+      active?: boolean;
+      imageR2Key?: string;
+      image_r2_key?: string;
+    }>(context.req.raw);
+    const fields: Row = {
+      title: body.title,
+      body: body.body,
+      link_url: body.linkUrl ?? body.link_url,
+      image_r2_key: body.imageR2Key ?? body.image_r2_key,
+      active: body.active === undefined ? undefined : body.active ? 1 : 0,
+    };
+    const update = buildUpdateStatement('banners', fields);
+    await dbRun(context.env.DB, update.sql, [...update.values, context.req.param('bannerId')]);
+    const row = await dbFirst<Row>(
+      context.env.DB,
+      'SELECT * FROM banners WHERE id = ? AND institution_id = ? LIMIT 1',
+      [context.req.param('bannerId'), institutionId],
+    );
+    if (!row) return context.json({ error: 'Banner not found' }, 404);
+    return context.json(mapBanner(row));
+  });
+
+  app.delete('/api/institutions/:id/cms/banners/:bannerId', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+    await dbRun(
+      context.env.DB,
+      'DELETE FROM banners WHERE id = ? AND institution_id = ?',
+      [context.req.param('bannerId'), institutionId],
+    );
+    return context.json({ success: true });
+  });
+
+  app.get('/api/institutions/:id/audit-log', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+
+    const limit = Math.min(Math.max(toNumber(context.req.query('limit'), 25), 1), 100);
+    const rows = await dbAll<Row>(
+      context.env.DB,
+      `SELECT al.*, pu.full_name AS actor_name
+       FROM audit_log al
+       LEFT JOIN platform_users pu ON pu.uid = al.user_id
+       WHERE al.institution_id = ?
+       ORDER BY al.created_at DESC
+       LIMIT ?`,
+      [institutionId, limit],
+    );
+
+    return context.json(
+      rows.map((row) => ({
+        id: String(row.id || ''),
+        institution_id: row.institution_id || institutionId,
+        institutionId: row.institution_id || institutionId,
+        user_id: row.user_id || null,
+        userId: row.user_id || null,
+        actor_name: row.actor_name || null,
+        actorName: row.actor_name || null,
+        action: String(row.action || ''),
+        target_table: row.target_table || null,
+        targetTable: row.target_table || null,
+        target_id: row.target_id || null,
+        targetId: row.target_id || null,
+        metadata: parseJsonValue(row.metadata, {}),
+        ip_address: row.ip_address || null,
+        ipAddress: row.ip_address || null,
+        user_agent: row.user_agent || null,
+        userAgent: row.user_agent || null,
+        created_at: row.created_at || null,
+        createdAt: row.created_at || null,
+      })),
+    );
+  });
+
+  app.get('/api/institutions/:id/login-history', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const institutionId = context.req.param('id');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+
+    const limit = Math.min(Math.max(toNumber(context.req.query('limit'), 25), 1), 100);
+    const rows = await dbAll<Row>(
+      context.env.DB,
+      `SELECT lh.*, pu.full_name AS user_name, pu.email
+       FROM login_history lh
+       JOIN platform_users pu ON pu.uid = lh.user_id
+       WHERE lh.institution_id = ?
+       ORDER BY lh.created_at DESC
+       LIMIT ?`,
+      [institutionId, limit],
+    );
+
+    return context.json(
+      rows.map((row) => ({
+        id: String(row.id || ''),
+        user_id: String(row.user_id || ''),
+        userId: String(row.user_id || ''),
+        institution_id: row.institution_id || institutionId,
+        institutionId: row.institution_id || institutionId,
+        user_name: row.user_name || null,
+        userName: row.user_name || null,
+        email: row.email || null,
+        ip_address: row.ip_address || null,
+        ipAddress: row.ip_address || null,
+        user_agent: row.user_agent || null,
+        userAgent: row.user_agent || null,
+        success: toNumber(row.success, 1) === 1,
+        created_at: row.created_at || null,
+        createdAt: row.created_at || null,
+      })),
+    );
   });
 
   app.get('/api/institutions/:id/dashboard', async (context) => {

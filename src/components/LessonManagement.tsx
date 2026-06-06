@@ -42,7 +42,10 @@ export function LessonManagement() {
     }
   };
 
-  const visibleCourses = courses;
+  const visibleCourses =
+    profile?.role === 'teacher'
+      ? courses.filter((course) => (course.teacher_id || course.teacherId) === profile.uid)
+      : courses;
 
   const handleOpenAddLesson = (moduleId: string) => {
     setSelectedModuleForLesson(moduleId);

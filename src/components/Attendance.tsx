@@ -11,7 +11,18 @@ import { AttendanceAnalytics } from './attendance/AttendanceAnalytics';
 
 type ToastState = { message: string; type: 'success' | 'error' | 'warning' } | null;
 
-export function Attendance() {
+const VIEW_TITLES: Record<string, { title: string; description: string }> = {
+  dashboard: { title: 'Attendance Dashboard', description: 'Overview of presence, recording, and audit history.' },
+  record: { title: 'Record Attendance', description: 'Mark student presence for the selected course and date.' },
+  reports: { title: 'Attendance Reports', description: 'Filter and review historical attendance records.' },
+  late: { title: 'Late Attendance Tracking', description: 'Records where students were marked late.' },
+};
+
+interface AttendanceProps {
+  initialView?: string;
+}
+
+export function Attendance({ initialView = 'dashboard' }: AttendanceProps) {
   const { profile, institutionId } = useAuth();
 
   // Selection States
@@ -206,6 +217,13 @@ export function Attendance() {
     [courses, selectedCourseId],
   );
 
+  const viewMeta = VIEW_TITLES[initialView] || VIEW_TITLES.dashboard;
+  const lateOnly = initialView === 'late';
+  const reportHistory = useMemo(() => {
+    if (!lateOnly) return allAttendanceRecords;
+    return allAttendanceRecords.filter((record) => record.status === 'late');
+  }, [allAttendanceRecords, lateOnly]);
+
   useEffect(() => {
     if (selectedCourse) {
       setSelectedCourseName(selectedCourse.course_name || selectedCourse.title || 'Course');
@@ -239,6 +257,11 @@ export function Attendance() {
     );
   }
 
+  const showCoursePicker = initialView !== 'reports' && initialView !== 'late';
+  const showAnalytics = initialView === 'dashboard' || initialView === 'record';
+  const showSession = initialView === 'dashboard' || initialView === 'record';
+  const showReport = initialView === 'dashboard' || initialView === 'reports' || initialView === 'late';
+
   return (
     <div className="relative p-4 md:p-8 max-w-7xl mx-auto space-y-6">
       {toast && (
@@ -254,59 +277,69 @@ export function Attendance() {
       )}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Attendance Tracker</h1>
-          <p className="text-gray-500 mt-1 font-medium text-sm">Record and audit student classroom presence.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">{viewMeta.title}</h1>
+          <p className="text-gray-500 mt-1 font-medium text-sm">{viewMeta.description}</p>
         </div>
-        <input
-          type="date"
-          value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
-          className="px-4 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm font-semibold"
-        />
+        {showSession && (
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="px-4 py-2 border border-gray-200 rounded-xl focus:outline-none text-sm font-semibold"
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-6">
-          <Card title="Select Course">
-            <div className="space-y-2 mt-4">
-              {courses.map((course) => (
-                <div
-                  key={course.id}
-                  onClick={() => {
-                    setSelectedCourseId(course.id);
-                    setSelectedCourseName(course.course_name || course.title || 'Course');
-                  }}
-                  className={`p-4 rounded-2xl border cursor-pointer transition-all ${
-                    selectedCourseId === course.id ? 'border-black bg-gray-50 shadow-sm' : 'border-gray-100 hover:border-gray-200'
-                  }`}
-                >
-                  <p className="font-bold text-sm text-gray-900">{course.course_name || course.title}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-          <AttendanceAnalytics stats={stats} selectedCourseName={selectedCourseName || 'Course'} />
-        </div>
+        {showCoursePicker && (
+          <div className="lg:col-span-1 space-y-6">
+            <Card title="Select Course">
+              <div className="space-y-2 mt-4">
+                {courses.map((course) => (
+                  <div
+                    key={course.id}
+                    onClick={() => {
+                      setSelectedCourseId(course.id);
+                      setSelectedCourseName(course.course_name || course.title || 'Course');
+                    }}
+                    className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+                      selectedCourseId === course.id ? 'border-black bg-gray-50 shadow-sm' : 'border-gray-100 hover:border-gray-200'
+                    }`}
+                  >
+                    <p className="font-bold text-sm text-gray-900">{course.course_name || course.title}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+            {showAnalytics && (
+              <AttendanceAnalytics stats={stats} selectedCourseName={selectedCourseName || 'Course'} />
+            )}
+          </div>
+        )}
 
-        <div className="lg:col-span-2 space-y-6">
-          <AttendanceSession
-            students={students}
-            attendanceRecords={attendanceRecords}
-            onMark={handleMarkStatus}
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            loading={loading}
-            selectedCourseName={selectedCourseName}
-          />
-          <AttendanceReport
-            history={allAttendanceRecords}
-            students={students}
-            courses={courses}
-            teachers={teachers}
-            filters={filters}
-            onFilterChange={handleFilterChange}
-            onClearFilters={clearFilters}
-          />
+        <div className={`space-y-6 ${showCoursePicker ? 'lg:col-span-2' : 'lg:col-span-3'}`}>
+          {showSession && (
+            <AttendanceSession
+              students={students}
+              attendanceRecords={attendanceRecords}
+              onMark={handleMarkStatus}
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              loading={loading}
+              selectedCourseName={selectedCourseName}
+            />
+          )}
+          {showReport && (
+            <AttendanceReport
+              history={reportHistory}
+              students={students}
+              courses={courses}
+              teachers={teachers}
+              filters={filters}
+              onFilterChange={handleFilterChange}
+              onClearFilters={clearFilters}
+            />
+          )}
         </div>
       </div>
     </div>

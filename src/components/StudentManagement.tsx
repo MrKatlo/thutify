@@ -184,8 +184,8 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 }
 
 export function StudentManagement({ activeTab }: StudentManagementProps) {
-  const { profile, institutionId, isOwner, isAdmin, isTeacher } = useAuth();
-  const canManageLifecycle = Boolean(isOwner || isAdmin);
+  const { profile, institutionId, canManageInstitution, isTeacher } = useAuth();
+  const canManageLifecycle = Boolean(canManageInstitution);
 
   const viewCopy = TAB_COPY[activeTab] || TAB_COPY['students/all'];
 
@@ -214,7 +214,7 @@ export function StudentManagement({ activeTab }: StudentManagementProps) {
   const [formState, setFormState] = useState<AddStudentFormState>(INITIAL_FORM_STATE);
 
   const totalPages = Math.max(1, Math.ceil((studentsResponse.total || 0) / PAGE_SIZE));
-  const canSeeStudentArea = Boolean(isOwner || isAdmin || isTeacher);
+  const canSeeStudentArea = Boolean(canManageInstitution || isTeacher);
 
   useEffect(() => {
     setPage(1);

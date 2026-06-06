@@ -11,7 +11,7 @@ interface SystemSettingsProps {
 }
 
 export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
-  const { profile, institutionId } = useAuth();
+  const { profile, institutionId, canManageInstitution } = useAuth();
   const toast = useToast();
 
   const personalTabs = [
@@ -31,7 +31,7 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
     { id: 'security', label: 'Security & Privacy', icon: Shield },
   ];
 
-  const availableTabs = profile?.role === 'owner' ? [...personalTabs, ...ownerTabs] : personalTabs;
+  const availableTabs = canManageInstitution ? [...personalTabs, ...ownerTabs] : personalTabs;
   const defaultTab = initialActiveTab && availableTabs.some(tab => tab.id === initialActiveTab)
     ? initialActiveTab
     : (profile?.role === 'teacher' || profile?.role === 'student' ? 'profile' : 'branding');
@@ -51,6 +51,8 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
   const [gateway, setGateway] = useState('Stripe');
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [smsNotifications, setSmsNotifications] = useState(false);
+  const [announcementEmailEnabled, setAnnouncementEmailEnabled] = useState(false);
+  const [testEmailSending, setTestEmailSending] = useState(false);
   
   // Personal States (Student/Teacher)
   const [displayName, setDisplayName] = useState(profile?.fullName || '');
@@ -85,6 +87,7 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
       setGateway(inst.paymentGateway || inst.payment_gateway || 'Stripe');
       setEmailNotifications(inst.emailNotifications ?? inst.email_notifications ?? true);
       setSmsNotifications(inst.smsNotifications ?? inst.sms_notifications ?? false);
+      setAnnouncementEmailEnabled(inst.announcementEmailEnabled ?? inst.announcement_email_enabled ?? false);
     } catch (err) {
       console.error("Fetch institution failed:", err);
     } finally {
@@ -96,7 +99,7 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
     if (!institutionId) return;
     setLoading(true);
     try {
-      if (profile?.role === 'owner') {
+      if (canManageInstitution) {
         await cfApi.updateInstitution(institutionId, {
           name: platformName,
           logo_url: logoUrl,
@@ -108,6 +111,7 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
           payment_gateway: gateway,
           email_notifications: emailNotifications,
           sms_notifications: smsNotifications,
+          announcement_email_enabled: announcementEmailEnabled,
         });
         toast.success("Institutional settings saved successfully!");
       } else {
@@ -125,7 +129,21 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
     }
   };
 
-  const tabs = profile?.role === 'owner' ? [...personalTabs, ...ownerTabs] : personalTabs;
+  const handleSendTestEmail = async () => {
+    if (!institutionId) return;
+    setTestEmailSending(true);
+    try {
+      const result = await cfApi.sendTestEmail(institutionId, emailSender.includes('@') ? emailSender : undefined);
+      toast.success(`Test email sent to ${result.to}`);
+    } catch (err) {
+      console.error('Test email failed:', err);
+      toast.error('Could not send test email. Check SendGrid configuration.');
+    } finally {
+      setTestEmailSending(false);
+    }
+  };
+
+  const tabs = canManageInstitution ? [...personalTabs, ...ownerTabs] : personalTabs;
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
@@ -318,6 +336,23 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
                       className="w-full max-w-md px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black text-sm"
                     />
                   </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Button onClick={handleSendTestEmail} disabled={testEmailSending} variant="outline" className="gap-2">
+                      <Mail className="w-4 h-4" />
+                      {testEmailSending ? 'Sending...' : 'Send Test Email'}
+                    </Button>
+                  </div>
+                  <div className="flex items-center justify-between p-4 border border-gray-100 rounded-2xl">
+                    <div>
+                      <p className="font-bold text-sm text-gray-900">Announcement Emails</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Email all active members when a new institution announcement is published.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input type="checkbox" className="sr-only peer" checked={announcementEmailEnabled} onChange={(e) => setAnnouncementEmailEnabled(e.target.checked)} />
+                      <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-black transition-colors" />
+                      <span className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow transform peer-checked:translate-x-5 transition-transform"></span>
+                    </label>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="p-4 border border-gray-100 rounded-3xl">
                       <p className="font-bold text-sm text-gray-900 mb-2">Account Updates</p>
@@ -325,7 +360,7 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
                     </div>
                     <div className="p-4 border border-gray-100 rounded-3xl">
                       <p className="font-bold text-sm text-gray-900 mb-2">Support Emails</p>
-                      <p className="text-xs text-gray-400">Choose the address students and teachers see in outgoing communications.</p>
+                      <p className="text-xs text-gray-400">Test delivery uses SendGrid via SENDGRID_API_KEY and EMAIL env vars.</p>
                     </div>
                   </div>
                 </div>

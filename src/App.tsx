@@ -11,6 +11,8 @@ import { StudentManagement } from './components/StudentManagement';
 import { TeacherManagement } from './components/TeacherManagement';
 import { UserManagement } from './components/UserManagement';
 import { Reports } from './components/Reports';
+import { TeacherReports } from './components/TeacherReports';
+import { TeacherProfile } from './components/TeacherProfile';
 import { ModuleManagement } from './components/ModuleManagement';
 import { LessonManagement } from './components/LessonManagement';
 import { Assessment } from './components/Assessment';
@@ -59,7 +61,7 @@ export default function App() {
   const [instLoading, setInstLoading] = useState(false);
   const [instError, setInstError] = useState<'not-found' | 'suspended' | null>(null);
 
-  const { user, profile, loading: authLoading, isOwner, isAdmin, isTeacher } = useAuth();
+  const { user, profile, loading: authLoading, canManageInstitution, isTeacher, isTeacherApproved, isStudent } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -251,7 +253,7 @@ export default function App() {
         );
       }
 
-      if (profile.status === 'pending') {
+      if (profile.status === 'pending' || (profile.role === 'teacher' && profile.status === 'active' && !isTeacherApproved)) {
         return (
           <div className="min-h-screen flex items-center justify-center bg-[#fdfdfc] p-6 text-center font-sans">
             <div className="max-w-md">
@@ -260,7 +262,9 @@ export default function App() {
               </div>
               <h1 className="text-2xl font-bold mb-2">Registration Pending</h1>
               <p className="text-gray-500 mb-8 leading-relaxed font-semibold">
-                Your student application is currently pending approval. Once the institution owner approves your request, you will receive full portal access.
+                {profile.role === 'teacher'
+                  ? 'Your teacher account is pending approval. Once the institution owner approves your profile, you will be able to manage your assigned classes.'
+                  : 'Your student application is currently pending approval. Once the institution owner approves your request, you will receive full portal access.'}
               </p>
               <Button onClick={logout} className="gap-2">
                 <LogOut className="w-4 h-4" /> Sign Out
@@ -279,7 +283,9 @@ export default function App() {
               </div>
               <h1 className="text-2xl font-bold mb-2">Application Rejected</h1>
               <p className="text-gray-500 mb-8 leading-relaxed font-semibold">
-                Your institution application was rejected. Contact the institution administrator if you need help or want to reapply.
+                {profile.role === 'teacher'
+                  ? 'Your teacher application was rejected. Contact the institution administrator if you need help or want to reapply.'
+                  : 'Your institution application was rejected. Contact the institution administrator if you need help or want to reapply.'}
               </p>
               <Button onClick={logout} className="gap-2">
                 <LogOut className="w-4 h-4" /> Sign Out
@@ -353,45 +359,74 @@ export default function App() {
                     className="min-h-full"
                   >
                     {(() => {
-                      if (activeTab.startsWith('dashboard')) return <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'students' || activeTab.startsWith('students/')) return (isOwner || isAdmin || isTeacher) ? (
+                      if (activeTab.startsWith('dashboard')) return (
+                        <Dashboard
+                          setActiveTab={setActiveTab}
+                          initialView={activeTab === 'dashboard' ? 'overview' : activeTab.replace('dashboard/', '')}
+                        />
+                      );
+                      if (activeTab === 'students' || activeTab.startsWith('students/')) return (canManageInstitution || isTeacher) ? (
                         <StudentManagement activeTab={activeTab === 'students' ? 'students/all' : activeTab} />
                       ) : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'teachers' || activeTab.startsWith('teachers/')) return (isOwner || isAdmin) ? (
+                      if (activeTab === 'teachers' || activeTab.startsWith('teachers/')) return canManageInstitution ? (
                         <TeacherManagement activeTab={activeTab === 'teachers' ? 'teachers/all' : activeTab} />
                       ) : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'users/roles' || activeTab === 'users/permissions') return isOwner ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('users/')) return canManageInstitution ? (
+                        <UserManagement initialView={activeTab.replace('users/', '')} />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab === 'courses/materials') return <CourseMaterials />;
                       if (activeTab === 'courses/enrollment') return <CourseEnrollment />;
                       if (activeTab === 'courses/analytics') return <CourseAnalytics />;
                       if (activeTab === 'courses' || activeTab.startsWith('courses/')) return <CourseList activeTab={activeTab} />;
                       if (activeTab === 'assessment' || activeTab.startsWith('assignments/')) return <Assessment initialMode={activeTab === 'assessment' ? 'assignments/all' : activeTab} />;
                       if (activeTab === 'content/syllabus') return <CourseSyllabus />;
-                      if (activeTab === 'content/modules') return (isOwner || isTeacher) ? <ModuleManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'content/lessons') return (isOwner || isTeacher) ? <LessonManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'content/modules') return (canManageInstitution || isTeacher) ? <ModuleManagement /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'content/lessons') return (canManageInstitution || isTeacher) ? <LessonManagement /> : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab === 'content/video') return <ContentLibrary initialCategory="Lecture Videos" />;
                       if (activeTab === 'content/resources') return <ContentLibrary initialCategory="Syllabi & PDFs" />;
                       if (activeTab === 'content/upload') return <ContentLibrary initialCategory="Syllabi & PDFs" autoOpenUpload />;
                       if (activeTab === 'assignments/scheduling') return <ScheduleCalendar />;
-                      if (activeTab.startsWith('attendance/')) return (isOwner || isTeacher) ? <Attendance /> : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab === 'student/attendance') return isStudent ? (
+                        <Attendance initialView="dashboard" />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('attendance/')) return (canManageInstitution || isTeacher) ? (
+                        <Attendance initialView={activeTab.replace('attendance/', '')} />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab === 'financials' || activeTab.startsWith('finance/')) {
                         const financeMode = activeTab === 'financials'
                           ? 'payments'
-                          : activeTab.replace('finance/', '') as 'payments' | 'invoices' | 'refunds';
-                        const initialFinanceTab = ['payments', 'invoices', 'refunds'].includes(financeMode) ? financeMode : 'payments';
-                        return isOwner ? <Financials initialTab={initialFinanceTab} /> : <Dashboard setActiveTab={setActiveTab} />;
+                          : activeTab.replace('finance/', '');
+                        if (canManageInstitution) return <Financials initialTab={financeMode} />;
+                        if (isStudent && financeMode === 'payments') return <Financials initialTab="payments" />;
+                        return <Dashboard setActiveTab={setActiveTab} />;
                       }
-                      if (activeTab.startsWith('reports/')) return <Reports />;
+                      if (activeTab === 'student/certificates') return isStudent ? (
+                        <Certificates initialView="generate" />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('reports/')) return canManageInstitution ? (
+                        <Reports initialView={activeTab.replace('reports/', '')} />
+                      ) : isTeacher ? (
+                        <TeacherReports initialView={activeTab.replace('reports/', '')} />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('teacher/')) return isTeacher ? (
+                        <TeacherProfile initialView={activeTab.replace('teacher/', '')} />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
                       if (activeTab === 'communication/announcements') return <Announcements />;
                       if (activeTab === 'communication/live-classes') return <LiveClasses />;
                       if (activeTab === 'communication/discussions') return <Discussions />;
                       if (activeTab === 'communication/chat' || activeTab === 'communication/email' || activeTab === 'communication/sms' || activeTab === 'communication/in-app') return <Messaging />;
-                      if (activeTab.startsWith('settings/')) return <SystemSettings initialActiveTab={activeTab.replace('settings/', '')} />;
-                      if (activeTab.startsWith('certificates/')) return <Certificates />;
-                      if (activeTab.startsWith('cms/')) return isOwner ? <ContentManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab.startsWith('monitoring/')) return isOwner ? <SystemMonitoring /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab.startsWith('users/')) return isOwner ? <UserManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                      
+                      if (activeTab.startsWith('settings/')) return (canManageInstitution || isTeacher || isStudent) ? (
+                        <SystemSettings initialActiveTab={activeTab.replace('settings/', '')} />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('certificates/')) return canManageInstitution ? (
+                        <Certificates initialView={activeTab.replace('certificates/', '')} />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('cms/')) return canManageInstitution ? (
+                        <ContentManagement initialView={activeTab.replace('cms/', '')} />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      if (activeTab.startsWith('monitoring/')) return canManageInstitution ? (
+                        <SystemMonitoring initialView={activeTab.replace('monitoring/', '')} />
+                      ) : <Dashboard setActiveTab={setActiveTab} />;
                       // Fallback for all other sidebar routes
                       return <PlaceholderView routeId={activeTab} />;
                     })()}

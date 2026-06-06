@@ -81,6 +81,8 @@ export interface Institution {
   email_notifications?: boolean;
   smsNotifications?: boolean;
   sms_notifications?: boolean;
+  announcementEmailEnabled?: boolean;
+  announcement_email_enabled?: boolean;
   customDomain?: string;
   custom_domain?: string;
   createdAt: TimestampLike;
@@ -102,6 +104,8 @@ export interface InstitutionUser {
   phone?: string;
   role: UserRole;
   status: UserStatus;
+  teacherApproved?: boolean;
+  teacher_approved?: boolean;
   createdAt: TimestampLike;
   created_at?: TimestampLike;
   updatedAt: TimestampLike;

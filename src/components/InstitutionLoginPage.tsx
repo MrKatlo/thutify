@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import * as cfApi from '../services/cfApi';
@@ -17,6 +17,9 @@ export function InstitutionLoginPage({ institution }: InstitutionLoginPageProps)
   const [mode, setMode] = useState<'login' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetToken, setResetToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   
   // Custom Toast State
@@ -26,6 +29,20 @@ export function InstitutionLoginPage({ institution }: InstitutionLoginPageProps)
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
+
+  // Detect reset token query parameter on page load
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('resetToken');
+      if (token) {
+        setResetToken(token);
+        setMode('reset');
+      }
+    } catch {
+      // ignore malformed URLs
+    }
+  }, []);
 
   // Branding helpers
   const primaryColor = institution.primaryColor || 'black';
@@ -105,11 +122,37 @@ export function InstitutionLoginPage({ institution }: InstitutionLoginPageProps)
     e.preventDefault();
     setLoading(true);
     try {
-      await cfApi.requestPasswordReset(email, institution.id);
-      showToast("Password reset link sent to your email.", "success");
-      setTimeout(() => setMode('login'), 2000);
+      if (resetToken) {
+        if (!newPassword) {
+          showToast('Please enter a new password.', 'error');
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          showToast('Passwords do not match.', 'error');
+          return;
+        }
+        if (newPassword.length < 6) {
+          showToast('Password must be at least 6 characters long.', 'error');
+          return;
+        }
+
+        await cfApi.resetPassword(resetToken, newPassword);
+        showToast('Password has been reset. You can now sign in.', 'success');
+        setResetToken(null);
+        setNewPassword('');
+        setConfirmPassword('');
+        setPassword('');
+        setTimeout(() => {
+          setMode('login');
+          window.history.replaceState({}, '', `/${institution.slug}/login`);
+        }, 1500);
+      } else {
+        await cfApi.requestPasswordReset(email, institution.id);
+        showToast('Password reset link sent to your email.', 'success');
+        setTimeout(() => setMode('login'), 2000);
+      }
     } catch (err: any) {
-      showToast(err.message, "error");
+      showToast(err.message || 'Unable to reset password.', 'error');
     } finally {
       setLoading(false);
     }
@@ -206,28 +249,67 @@ export function InstitutionLoginPage({ institution }: InstitutionLoginPageProps)
             {mode === 'reset' && (
               <motion.div key="reset" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <div className="flex items-center gap-2 mb-6">
-                  <button onClick={() => setMode('login')} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-black transition-colors"><ArrowLeft className="w-4 h-4" /></button>
+                  <button onClick={() => {
+                    setMode('login');
+                    setResetToken(null);
+                    setNewPassword('');
+                    setConfirmPassword('');
+                  }} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-black transition-colors"><ArrowLeft className="w-4 h-4" /></button>
                   <h2 className="text-xl font-black text-gray-900">Reset Password</h2>
                 </div>
-                
+
                 <form onSubmit={handleResetPassword} className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Email Address</label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
-                      <input
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className={`w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 text-sm font-medium transition-all ${brandBorder}`}
-                        placeholder="name@institution.edu"
-                      />
+                  {!resetToken ? (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Email Address</label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className={`w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 text-sm font-medium transition-all ${brandBorder}`}
+                          placeholder="name@institution.edu"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-sm text-gray-500">Enter your new password to complete the reset process.</p>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">New Password</label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                          <input
+                            type="password"
+                            required
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className={`w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 text-sm font-medium transition-all ${brandBorder}`}
+                            placeholder="••••••••"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Confirm Password</label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                          <input
+                            type="password"
+                            required
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            className={`w-full pl-10 pr-4 py-3 bg-gray-50 border rounded-xl focus:outline-none focus:ring-2 text-sm font-medium transition-all ${brandBorder}`}
+                            placeholder="••••••••"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <Button type="submit" disabled={loading} className={`w-full py-3.5 text-sm font-bold shadow-lg shadow-black/5 rounded-xl ${brandBg}`}>
-                    {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto text-white" /> : 'Send Reset Link'}
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto text-white" /> : resetToken ? 'Save New Password' : 'Send Reset Link'}
                   </Button>
                 </form>
               </motion.div>

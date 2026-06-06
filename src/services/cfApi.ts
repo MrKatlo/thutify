@@ -502,6 +502,47 @@ export async function markTeacherAttendance(
   });
 }
 
+export async function getMyTeacherProfile(institutionId: string): Promise<Record<string, unknown>> {
+  return apiRequest('GET', `/institutions/${institutionId}/teachers/me`);
+}
+
+export async function updateMyTeacherProfile(
+  institutionId: string,
+  data: {
+    fullName?: string;
+    phone?: string;
+    gender?: string;
+    address?: string;
+    qualification?: string;
+    profileImageUrl?: string;
+    profile_image_url?: string;
+    notes?: string;
+  },
+): Promise<Record<string, unknown>> {
+  return apiRequest('PATCH', `/institutions/${institutionId}/teachers/me`, { body: data });
+}
+
+export async function getMyTeacherAttendance(
+  institutionId: string,
+  month?: string,
+): Promise<TeacherAttendanceRecord[]> {
+  return apiRequest('GET', `/institutions/${institutionId}/teachers/me/attendance`, {
+    query: month ? { month } : undefined,
+  });
+}
+
+export async function getMyTeacherPerformance(institutionId: string): Promise<{
+  averageStudentScore?: number | null;
+  averageQuizScore?: number | null;
+  averageAssignmentGrade?: number | null;
+  attendancePercentage?: number | null;
+  assignedStudentsCount?: number | null;
+  assignedCoursesCount?: number | null;
+  courseCompletionRate?: number | null;
+}> {
+  return apiRequest('GET', `/institutions/${institutionId}/teachers/me/performance`);
+}
+
 export async function getTeacherPerformance(
   institutionId: string,
   teacherId: string,
@@ -985,6 +1026,131 @@ export async function generateCertificate(institutionId: string, studentId: stri
   });
 }
 
+export async function updateCertificateStatus(certificateId: string, status: 'issued' | 'revoked' | 'pending'): Promise<Certificate> {
+  return apiRequest('PATCH', `/certificates/${certificateId}`, {
+    body: { status },
+  });
+}
+
+export interface CertificateVerificationResult {
+  valid: boolean;
+  status?: string;
+  verificationCode?: string;
+  studentName?: string;
+  courseName?: string;
+  institutionName?: string;
+  issuedDate?: string;
+  error?: string;
+}
+
+export async function verifyCertificateCode(code: string): Promise<CertificateVerificationResult> {
+  return apiRequest('GET', `/public/certificates/verify/${encodeURIComponent(code)}`, { auth: false });
+}
+
+export async function sendTestEmail(institutionId: string, to?: string): Promise<{ success: boolean; to: string }> {
+  return apiRequest('POST', `/institutions/${institutionId}/email/test`, {
+    body: to ? { to } : {},
+  });
+}
+
+export interface CmsPage {
+  id: string;
+  title: string;
+  slug: string;
+  body?: string;
+  published?: boolean;
+}
+
+export interface CmsFaq {
+  id: string;
+  question: string;
+  answer: string;
+  orderIndex?: number;
+}
+
+export interface CmsBanner {
+  id: string;
+  title: string;
+  body?: string;
+  imageUrl?: string | null;
+  imageR2Key?: string | null;
+  linkUrl?: string | null;
+  active?: boolean;
+}
+
+export async function listCmsPages(institutionId: string): Promise<CmsPage[]> {
+  return apiRequest('GET', `/institutions/${institutionId}/cms/pages`);
+}
+
+export async function createCmsPage(institutionId: string, data: Partial<CmsPage>): Promise<CmsPage> {
+  return apiRequest('POST', `/institutions/${institutionId}/cms/pages`, { body: data });
+}
+
+export async function updateCmsPage(institutionId: string, pageId: string, data: Partial<CmsPage>): Promise<CmsPage> {
+  return apiRequest('PUT', `/institutions/${institutionId}/cms/pages/${pageId}`, { body: data });
+}
+
+export async function deleteCmsPage(institutionId: string, pageId: string): Promise<void> {
+  await apiRequest('DELETE', `/institutions/${institutionId}/cms/pages/${pageId}`);
+}
+
+export async function listCmsFaqs(institutionId: string): Promise<CmsFaq[]> {
+  return apiRequest('GET', `/institutions/${institutionId}/cms/faqs`);
+}
+
+export async function createCmsFaq(institutionId: string, data: Partial<CmsFaq>): Promise<CmsFaq> {
+  return apiRequest('POST', `/institutions/${institutionId}/cms/faqs`, { body: data });
+}
+
+export async function updateCmsFaq(institutionId: string, faqId: string, data: Partial<CmsFaq>): Promise<CmsFaq> {
+  return apiRequest('PUT', `/institutions/${institutionId}/cms/faqs/${faqId}`, { body: data });
+}
+
+export async function deleteCmsFaq(institutionId: string, faqId: string): Promise<void> {
+  await apiRequest('DELETE', `/institutions/${institutionId}/cms/faqs/${faqId}`);
+}
+
+export async function listCmsBanners(institutionId: string): Promise<CmsBanner[]> {
+  return apiRequest('GET', `/institutions/${institutionId}/cms/banners`);
+}
+
+export async function createCmsBanner(institutionId: string, data: Partial<CmsBanner & { imageR2Key?: string }>): Promise<CmsBanner> {
+  return apiRequest('POST', `/institutions/${institutionId}/cms/banners`, { body: data });
+}
+
+export async function updateCmsBanner(institutionId: string, bannerId: string, data: Partial<CmsBanner & { imageR2Key?: string }>): Promise<CmsBanner> {
+  return apiRequest('PUT', `/institutions/${institutionId}/cms/banners/${bannerId}`, { body: data });
+}
+
+export async function deleteCmsBanner(institutionId: string, bannerId: string): Promise<void> {
+  await apiRequest('DELETE', `/institutions/${institutionId}/cms/banners/${bannerId}`);
+}
+
+export interface RolePermissionEntry {
+  role: string;
+  permissionKey: string;
+  permission_key?: string;
+  allowed: boolean;
+}
+
+export async function getRolePermissions(institutionId: string): Promise<{
+  permissions: RolePermissionEntry[];
+  ownerBypass: boolean;
+  keys: string[];
+  roles: string[];
+}> {
+  return apiRequest('GET', `/institutions/${institutionId}/permissions`);
+}
+
+export async function updateRolePermissions(
+  institutionId: string,
+  permissions: RolePermissionEntry[],
+): Promise<{ permissions: RolePermissionEntry[]; ownerBypass: boolean }> {
+  return apiRequest('PUT', `/institutions/${institutionId}/permissions`, {
+    body: { permissions },
+  });
+}
+
 export async function createTimetableEntry(institutionId: string, data: TimetableInput & { teacherId?: string; teacher_id?: string }): Promise<TimetableEntry> {
   return apiRequest('POST', `/institutions/${institutionId}/timetable`, {
     body: data,
@@ -1118,6 +1284,64 @@ export async function getDashboardStats(institutionId: string): Promise<{
   unpaid_count: number;
 }> {
   return apiRequest('GET', `/institutions/${institutionId}/dashboard`);
+}
+
+export interface AuditLogEntry {
+  id: string;
+  institutionId?: string;
+  institution_id?: string;
+  userId?: string | null;
+  user_id?: string | null;
+  actorName?: string | null;
+  actor_name?: string | null;
+  action: string;
+  targetTable?: string | null;
+  target_table?: string | null;
+  targetId?: string | null;
+  target_id?: string | null;
+  metadata?: Record<string, unknown> | string | null;
+  ipAddress?: string | null;
+  ip_address?: string | null;
+  userAgent?: string | null;
+  user_agent?: string | null;
+  createdAt?: string;
+  created_at?: string;
+}
+
+export interface LoginHistoryEntry {
+  id: string;
+  userId: string;
+  user_id?: string;
+  institutionId?: string | null;
+  institution_id?: string | null;
+  userName?: string | null;
+  user_name?: string | null;
+  email?: string | null;
+  ipAddress?: string | null;
+  ip_address?: string | null;
+  userAgent?: string | null;
+  user_agent?: string | null;
+  success?: boolean | number;
+  createdAt?: string;
+  created_at?: string;
+}
+
+export async function listAuditLog(
+  institutionId: string,
+  options: { limit?: number } = {},
+): Promise<AuditLogEntry[]> {
+  return apiRequest('GET', `/institutions/${institutionId}/audit-log`, {
+    query: { limit: options.limit },
+  });
+}
+
+export async function listLoginHistory(
+  institutionId: string,
+  options: { limit?: number } = {},
+): Promise<LoginHistoryEntry[]> {
+  return apiRequest('GET', `/institutions/${institutionId}/login-history`, {
+    query: { limit: options.limit },
+  });
 }
 
 export async function getFinancialReport(institutionId: string): Promise<{

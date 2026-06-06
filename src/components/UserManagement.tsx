@@ -16,19 +16,49 @@ import {
   CheckCircle2, 
   Copy, 
   Trash2,
-  Loader2
+  Loader2,
+  Shield,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import * as cfApi from '../services/cfApi';
 
-export function UserManagement() {
+type ManagementView = 'users' | 'invites' | 'applications' | 'roles' | 'permissions' | 'restrictions';
+
+interface UserManagementProps {
+  initialView?: string;
+}
+
+const PERMISSION_LABELS: Record<string, string> = {
+  'courses.create': 'Create courses',
+  'courses.edit': 'Edit courses',
+  'students.manage': 'Manage students',
+  'students.suspend': 'Suspend students',
+  'finance.view': 'View finance',
+  'finance.refund': 'Process refunds',
+  'certificates.issue': 'Issue certificates',
+  'announcements.send': 'Send announcements',
+  'cms.manage': 'Manage CMS content',
+};
+
+export function UserManagement({ initialView }: UserManagementProps) {
   const { profile, institutionId } = useAuth();
   const toast = useToast();
   const [users, setUsers] = useState<any[]>([]);
   const [invites, setInvites] = useState<UserInvite[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'users' | 'invites' | 'applications'>('users');
+  const resolveView = (value?: string): ManagementView => {
+    if (value === 'roles' || value === 'permissions' || value === 'restrictions' || value === 'invites' || value === 'applications') {
+      return value;
+    }
+    return 'users';
+  };
+  const [view, setView] = useState<ManagementView>(resolveView(initialView));
+  const [permissions, setPermissions] = useState<cfApi.RolePermissionEntry[]>([]);
+  const [permissionKeys, setPermissionKeys] = useState<string[]>([]);
+  const [permissionRoles, setPermissionRoles] = useState<string[]>([]);
+  const [savingPermissions, setSavingPermissions] = useState(false);
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -38,6 +68,10 @@ export function UserManagement() {
   const [inviteRole, setInviteRole] = useState<UserRole>('student');
   const [applications, setApplications] = useState<any[]>([]);
   const [activeApplicationId, setActiveApplicationId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialView) setView(resolveView(initialView));
+  }, [initialView]);
 
   useEffect(() => {
     fetchData();
@@ -56,6 +90,14 @@ export function UserManagement() {
       } else if (view === 'applications') {
         const list = await cfApi.listApplications(institutionId);
         setApplications(list);
+      } else if (view === 'permissions') {
+        const matrix = await cfApi.getRolePermissions(institutionId);
+        setPermissions(matrix.permissions || []);
+        setPermissionKeys(matrix.keys || []);
+        setPermissionRoles(matrix.roles || []);
+      } else if (view === 'roles') {
+        const list = await cfApi.getInstitutionMembers(institutionId);
+        setUsers(list);
       }
     } catch (error) {
       console.error("Fetch management error:", error);
@@ -156,6 +198,31 @@ export function UserManagement() {
     (u.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const togglePermission = (role: string, permissionKey: string) => {
+    setPermissions((prev) =>
+      prev.map((entry) =>
+        entry.role === role && (entry.permissionKey || entry.permission_key) === permissionKey
+          ? { ...entry, allowed: !entry.allowed }
+          : entry,
+      ),
+    );
+  };
+
+  const savePermissions = async () => {
+    if (!institutionId) return;
+    setSavingPermissions(true);
+    try {
+      await cfApi.updateRolePermissions(institutionId, permissions);
+      toast.success('Permissions saved.');
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      toast.error('Could not save permissions.');
+    } finally {
+      setSavingPermissions(false);
+    }
+  };
+
   const filteredApplications = applications.filter(app => 
     (app.fullName || app.full_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
     (app.email || '').toLowerCase().includes(searchTerm.toLowerCase())
@@ -190,12 +257,78 @@ export function UserManagement() {
           >
             <UserPlus className="w-3.5 h-3.5 mr-2" /> Applications
           </Button>
+          <Button 
+            variant={view === 'roles' ? 'primary' : 'outline'} 
+            onClick={() => setView('roles')}
+            className="text-xs py-2"
+          >
+            <Shield className="w-3.5 h-3.5 mr-2" /> Roles
+          </Button>
+          <Button 
+            variant={view === 'permissions' ? 'primary' : 'outline'} 
+            onClick={() => setView('permissions')}
+            className="text-xs py-2"
+          >
+            <Lock className="w-3.5 h-3.5 mr-2" /> Permissions
+          </Button>
+          {view === 'users' && (
           <Button onClick={() => setShowInviteForm(true)} className="text-xs py-2 bg-black text-white">
             <Plus className="w-3.5 h-3.5 mr-2" /> Invite User
           </Button>
+          )}
         </div>
       </div>
 
+      {view === 'permissions' && (
+        <Card title="Permissions Matrix" description="Owners and admins always have full access. Configure teacher and student capabilities below.">
+          {loading ? (
+            <div className="py-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-gray-200" /></div>
+          ) : (
+            <div className="mt-6 overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="py-3 pr-4 font-bold text-gray-400 uppercase text-xs">Permission</th>
+                    {permissionRoles.map((role) => (
+                      <th key={role} className="py-3 px-4 font-bold text-gray-400 uppercase text-xs text-center">{role}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {permissionKeys.map((key) => (
+                    <tr key={key} className="border-b border-gray-50">
+                      <td className="py-3 pr-4 font-medium">{PERMISSION_LABELS[key] || key}</td>
+                      {permissionRoles.map((role) => {
+                        const entry = permissions.find((p) => p.role === role && (p.permissionKey || p.permission_key) === key);
+                        const allowed = entry?.allowed ?? true;
+                        return (
+                          <td key={`${role}-${key}`} className="py-3 px-4 text-center">
+                            <input type="checkbox" checked={allowed} onChange={() => togglePermission(role, key)} />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="mt-6 flex justify-end">
+                <Button onClick={savePermissions} disabled={savingPermissions} className="bg-black text-white">
+                  {savingPermissions ? 'Saving...' : 'Save Permissions'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {view === 'restrictions' && (
+        <Card title="Access Restrictions" description="Institution owners have unrestricted access. Use the Permissions tab to limit teacher and student actions.">
+          <p className="mt-4 text-sm text-gray-500">Suspend individual users from the Users tab. Role-based restrictions are managed under Permissions.</p>
+        </Card>
+      )}
+
+      {view !== 'permissions' && view !== 'restrictions' && (
+      <>
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input 
@@ -208,7 +341,7 @@ export function UserManagement() {
       </div>
 
       <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm">
-        {view === 'users' && (
+        {(view === 'users' || view === 'roles') && (
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-gray-50/50 border-b border-gray-100">
@@ -345,6 +478,8 @@ export function UserManagement() {
           </table>
         )}
       </div>
+      </>
+      )}
 
       <AnimatePresence>
         {showInviteForm && (
