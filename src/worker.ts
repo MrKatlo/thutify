@@ -56,6 +56,8 @@ type AuthUserProvisioner = (
   displayName?: string,
 ) => Promise<{ uid: string }>;
 
+type AuthUserPasswordUpdater = (email: string, password: string) => Promise<void>;
+
 interface InvitationDeliveryResult {
   provider: 'mock';
   delivered: boolean;
@@ -80,6 +82,7 @@ type InvitationDeliveryHandler = (payload: {
 interface CreateAppOptions {
   verifyToken?: TokenVerifier;
   provisionAuthUser?: AuthUserProvisioner;
+  updateAuthUserPassword?: AuthUserPasswordUpdater;
   deliverInvitationEmail?: InvitationDeliveryHandler;
 }
 
@@ -2651,6 +2654,7 @@ async function forwardRawRequest(url: string | URL, rawRequest: Request, method:
 export function createApp(options: CreateAppOptions = {}) {
   const verifyToken = options.verifyToken || verifyFirebaseIdToken;
   const provisionAuthUser = options.provisionAuthUser || createFirebaseEmailPasswordUser;
+  const updateAuthUserPassword = options.updateAuthUserPassword || null;
   const deliverInvitationEmail = options.deliverInvitationEmail || sendMockInvitationEmail;
   const app = new Hono<AppBindings>();
 
@@ -2811,11 +2815,18 @@ export function createApp(options: CreateAppOptions = {}) {
       `,
     });
 
-    if (!emailResult) {
-      return context.json({ error: 'Failed to send password reset email. Please verify your email provider configuration.' }, 502);
-    }
-
-    return context.json({ success: true, token, expiresAt });
+    return context.json({
+      success: true,
+      token,
+      expiresAt,
+      emailDelivered: Boolean(emailResult),
+      ...(emailResult
+        ? {}
+        : {
+            message:
+              'Reset token created but email was not sent. Configure SendGrid/Mailjet, or use the token from this response in development.',
+          }),
+    });
   });
 
   app.post('/api/auth/password-reset/:token', async (context) => {
@@ -2844,7 +2855,11 @@ export function createApp(options: CreateAppOptions = {}) {
     if (!email) return context.json({ error: 'Reset request is malformed' }, 500);
 
     try {
-      await updateFirebasePasswordByEmail(context.env, email, newPassword);
+      if (updateAuthUserPassword) {
+        await updateAuthUserPassword(email, newPassword);
+      } else {
+        await updateFirebasePasswordByEmail(context.env, email, newPassword);
+      }
     } catch (error) {
       console.error('Failed to update Firebase password', error);
       return context.json({ error: 'Unable to update password at this time' }, 500);
@@ -2870,13 +2885,10 @@ export function createApp(options: CreateAppOptions = {}) {
       `,
     });
 
-    if (!emailResult) {
-      return context.json({ error: 'Password updated but confirmation email failed to send' }, 502);
-    }
-
     return context.json({
       success: true,
       message: 'Password has been reset successfully.',
+      emailDelivered: Boolean(emailResult),
     });
   });
 

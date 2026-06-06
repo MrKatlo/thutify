@@ -3,6 +3,7 @@ import { useAuth, setActiveInstitutionId } from './hooks/useAuth';
 import { Sidebar } from './components/layout/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { CourseList } from './components/courses/CourseList';
+import { CourseCategories } from './components/courses/CourseCategories';
 import { CourseEnrollment } from './components/courses/CourseEnrollment';
 import { CourseAnalytics } from './components/courses/CourseAnalytics';
 import { Announcements } from './components/Announcements';
@@ -374,10 +375,15 @@ export default function App() {
                       if (activeTab.startsWith('users/')) return canManageInstitution ? (
                         <UserManagement initialView={activeTab.replace('users/', '')} />
                       ) : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'courses/materials') return <CourseMaterials />;
-                      if (activeTab === 'courses/enrollment') return <CourseEnrollment />;
-                      if (activeTab === 'courses/analytics') return <CourseAnalytics />;
-                      if (activeTab === 'courses' || activeTab.startsWith('courses/')) return <CourseList activeTab={activeTab} />;
+                      if (activeTab === 'courses/materials') return <CourseMaterials key="courses-materials" />;
+                      if (activeTab === 'courses/enrollment') return <CourseEnrollment key="courses-enrollment" />;
+                      if (activeTab === 'courses/analytics') return <CourseAnalytics key="courses-analytics" />;
+                      if (activeTab === 'courses/categories') return (
+                        <CourseCategories key="courses-categories" setActiveTab={setActiveTab} />
+                      );
+                      if (activeTab === 'courses' || activeTab.startsWith('courses/')) return (
+                        <CourseList key={activeTab} activeTab={activeTab} setActiveTab={setActiveTab} />
+                      );
                       if (activeTab === 'assessment' || activeTab.startsWith('assignments/')) return <Assessment initialMode={activeTab === 'assessment' ? 'assignments/all' : activeTab} />;
                       if (activeTab === 'content/syllabus') return <CourseSyllabus />;
                       if (activeTab === 'content/modules') return (canManageInstitution || isTeacher) ? <ModuleManagement /> : <Dashboard setActiveTab={setActiveTab} />;

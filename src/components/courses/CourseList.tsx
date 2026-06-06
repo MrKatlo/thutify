@@ -18,9 +18,46 @@ import * as cfApi from '../../services/cfApi';
 
 interface CourseListProps {
   activeTab?: string;
+  setActiveTab?: (tab: string) => void;
 }
 
-export function CourseList({ activeTab }: CourseListProps) {
+const COURSE_VIEW_META: Record<
+  string,
+  { title: string; description: string; emptyTitle: string; emptyDescription: string }
+> = {
+  'courses/all': {
+    title: 'All Courses',
+    description: 'Every course in your institution — draft, published, and archived.',
+    emptyTitle: 'No Courses Found',
+    emptyDescription: 'Get started by creating the first institutional course.',
+  },
+  courses: {
+    title: 'All Courses',
+    description: 'Every course in your institution — draft, published, and archived.',
+    emptyTitle: 'No Courses Found',
+    emptyDescription: 'Get started by creating the first institutional course.',
+  },
+  'courses/published': {
+    title: 'Published Courses',
+    description: 'Active courses that are live for enrollment and student access.',
+    emptyTitle: 'No Published Courses',
+    emptyDescription: 'Publish a draft course or create a new one with active status.',
+  },
+  'courses/drafts': {
+    title: 'Draft Courses',
+    description: 'Courses still being prepared before they go live.',
+    emptyTitle: 'No Draft Courses',
+    emptyDescription: 'Draft courses stay hidden from students until you publish them.',
+  },
+  'courses/archived': {
+    title: 'Archived Courses',
+    description: 'Retired courses kept for records but not shown to new enrollments.',
+    emptyTitle: 'No Archived Courses',
+    emptyDescription: 'Archive old courses from the course editor when they are no longer offered.',
+  },
+};
+
+export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
   const { profile, institutionId, canManageInstitution, isTeacher } = useAuth();
   const [courses, setCourses] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
@@ -43,7 +80,14 @@ export function CourseList({ activeTab }: CourseListProps) {
   const [description, setDescription] = useState('');
   const [assignedTeacherId, setAssignedTeacherId] = useState('');
   const [fee, setFee] = useState<number>(0);
+  const [category, setCategory] = useState('');
   const [status, setStatus] = useState<'active' | 'draft' | 'archived'>('draft');
+
+  const resolvedTab = activeTab || 'courses/all';
+  const isCreateView = resolvedTab === 'courses/create';
+  const viewMeta =
+    COURSE_VIEW_META[resolvedTab] ||
+    COURSE_VIEW_META['courses/all'];
 
   const canEditCourse = (course: { teacher_id?: string; teacherId?: string }) => {
     if (canManageInstitution) return true;
@@ -85,17 +129,20 @@ export function CourseList({ activeTab }: CourseListProps) {
     setDescription('');
     setAssignedTeacherId('');
     setFee(0);
+    setCategory('');
     setStatus('draft');
     setIsEditing(false);
     setSelectedCourse(null);
   };
 
   useEffect(() => {
-    if (activeTab === 'courses/create') {
+    if (isCreateView && canManageInstitution) {
       resetForm();
       setShowForm(true);
+      return;
     }
-  }, [activeTab]);
+    setShowForm(false);
+  }, [resolvedTab, canManageInstitution, isCreateView]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -108,6 +155,7 @@ export function CourseList({ activeTab }: CourseListProps) {
         title,
         description,
         teacher_id: assignedTeacherId || undefined,
+        category: category.trim() || undefined,
         fee: Number(fee),
         status,
       };
@@ -119,6 +167,7 @@ export function CourseList({ activeTab }: CourseListProps) {
       }
       resetForm();
       setShowForm(false);
+      if (setActiveTab) setActiveTab('courses/all');
       fetchData();
     } catch (error) {
       console.error("Save course failed:", error);
@@ -130,6 +179,7 @@ export function CourseList({ activeTab }: CourseListProps) {
     setTitle(course.title);
     setDescription(course.description);
     setAssignedTeacherId(course.teacher_id || '');
+    setCategory(course.category || '');
     setFee(course.fee);
     setStatus(course.status);
     setIsEditing(true);
@@ -162,21 +212,114 @@ export function CourseList({ activeTab }: CourseListProps) {
     );
   }
 
+  const pageTitle = profile?.role === 'student'
+    ? 'My Courses'
+    : isTeacher
+    ? 'My Assigned Courses'
+    : isCreateView
+    ? 'Create Course'
+    : viewMeta.title;
+
+  const pageDescription = profile?.role === 'student'
+    ? 'Your enrolled courses and academic content.'
+    : isTeacher
+    ? 'Courses assigned to you for teaching and content management.'
+    : isCreateView
+    ? 'Add a new course to your institution catalog. You can assign a teacher and publish later.'
+    : viewMeta.description;
+
+  const courseForm = (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div>
+        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Title</label>
+        <input required value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black" />
+      </div>
+
+      <div>
+        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Description</label>
+        <textarea required value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none h-24 focus:ring-2 focus:ring-black" />
+      </div>
+
+      <div>
+        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Category</label>
+        <input
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          placeholder="e.g. Mathematics, Science, Grade 10"
+          className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Teacher</label>
+          <select value={assignedTeacherId} onChange={(e) => setAssignedTeacherId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none appearance-none">
+            <option value="">Assign Later</option>
+            {teachers.map(t => <option key={t.uid} value={t.uid}>{t.full_name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Fee ($)</label>
+          <input type="number" value={fee} onChange={(e) => setFee(Number(e.target.value))} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none" />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Status</label>
+        <div className="flex gap-2 mt-2">
+          {['draft', 'active', 'archived'].map((s) => (
+            <button key={s} type="button" onClick={() => setStatus(s as any)} className={`flex-1 py-2 text-[10px] font-bold rounded-lg border-2 uppercase tracking-wider ${status === s ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-400 border-gray-100 hover:border-gray-200'}`}>{s}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="pt-4 flex gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            resetForm();
+            setShowForm(false);
+            if (setActiveTab) setActiveTab('courses/all');
+          }}
+          className="flex-1 py-3"
+        >
+          Cancel
+        </Button>
+        <Button type="submit" className="flex-[2] py-3 bg-black text-white">{isEditing ? 'Save Changes' : 'Create Course'}</Button>
+      </div>
+    </form>
+  );
+
+  if (isCreateView && canManageInstitution && showForm && !isEditing) {
+    return (
+      <div className="p-4 md:p-8 max-w-3xl mx-auto space-y-8">
+        <div>
+          <h1 className="text-3xl font-extrabold tracking-tight">{pageTitle}</h1>
+          <p className="text-gray-500 mt-1 font-medium text-sm">{pageDescription}</p>
+        </div>
+        <Card className="p-8">{courseForm}</Card>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Institutional Courses</h1>
-          <p className="text-gray-500 mt-1 font-medium text-sm">
-            {profile?.role === 'student'
-              ? 'Your enrolled courses and academic content.'
-              : isTeacher
-              ? 'Courses assigned to you for teaching and content management.'
-              : 'Manage the institutional curriculum and assignments.'}
-          </p>
+          <h1 className="text-3xl font-extrabold tracking-tight">{pageTitle}</h1>
+          <p className="text-gray-500 mt-1 font-medium text-sm">{pageDescription}</p>
+          {!profile || profile.role === 'owner' || profile.role === 'admin' ? (
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-2">
+              Showing {filteredCourses.length} of {courses.length} courses
+            </p>
+          ) : null}
         </div>
-        {canManageInstitution && (
-          <Button onClick={() => { resetForm(); setShowForm(true); }} className="gap-2 bg-black text-white hover:bg-gray-800">
+        {canManageInstitution && !isCreateView && (
+          <Button
+            onClick={() => (setActiveTab ? setActiveTab('courses/create') : (resetForm(), setShowForm(true)))}
+            className="gap-2 bg-black text-white hover:bg-gray-800"
+          >
             <Plus className="w-4 h-4" /> Create Course
           </Button>
         )}
@@ -193,10 +336,12 @@ export function CourseList({ activeTab }: CourseListProps) {
               <BookOpen className="w-10 h-10 text-gray-300" />
             </div>
             <h3 className="text-lg font-bold text-gray-900">
-              {profile?.role === 'student' ? 'No Enrolled Courses' : 'No Courses Found'}
+              {profile?.role === 'student' ? 'No Enrolled Courses' : viewMeta.emptyTitle}
             </h3>
             <p className="text-gray-500 max-w-xs mx-auto mt-2 italic text-sm">
-              {profile?.role === 'student' ? 'You are not currently enrolled in any courses. Please contact your institution owner or teacher.' : 'Get started by creating the first institutional course.'}
+              {profile?.role === 'student'
+                ? 'You are not currently enrolled in any courses. Please contact your institution owner or teacher.'
+                : viewMeta.emptyDescription}
             </p>
           </div>
         ) : (
@@ -208,6 +353,9 @@ export function CourseList({ activeTab }: CourseListProps) {
                     <BookOpen className={`w-6 h-6 ${course.status === 'active' ? 'text-white' : 'text-gray-400'}`} />
                   </div>
                   <h3 className="text-xl font-bold text-gray-900 mb-2">{course.title}</h3>
+                  {course.category ? (
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-2">{course.category}</p>
+                  ) : null}
                   <p className="text-sm text-gray-500 line-clamp-3 mb-4">{course.description}</p>
                 </div>
 
@@ -254,48 +402,7 @@ export function CourseList({ activeTab }: CourseListProps) {
                 <button onClick={() => setShowForm(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors"><X className="w-5 h-5" /></button>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Title</label>
-                  <input required value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black" />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Description</label>
-                  <textarea required value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none h-24 focus:ring-2 focus:ring-black" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Teacher</label>
-                    <select value={assignedTeacherId} onChange={(e) => setAssignedTeacherId(e.target.value)} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none appearance-none">
-                      <option value="">Assign Later</option>
-                      {teachers.map(t => <option key={t.uid} value={t.uid}>{t.full_name}</option>)}
-                    </select>
-                    <p className="mt-1 ml-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                      Optional. You can create the course first and assign a teacher later.
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Fee ($)</label>
-                    <input type="number" value={fee} onChange={(e) => setFee(Number(e.target.value))} className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Status</label>
-                  <div className="flex gap-2 mt-2">
-                    {['draft', 'active', 'archived'].map((s) => (
-                      <button key={s} type="button" onClick={() => setStatus(s as any)} className={`flex-1 py-2 text-[10px] font-bold rounded-lg border-2 uppercase tracking-wider ${status === s ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-400 border-gray-100 hover:border-gray-200'}`}>{s}</button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pt-4 flex gap-3">
-                  <Button variant="outline" onClick={() => setShowForm(false)} className="flex-1 py-3">Cancel</Button>
-                  <Button type="submit" className="flex-[2] py-3 bg-black text-white">{isEditing ? 'Save Changes' : 'Create Course'}</Button>
-                </div>
-              </form>
+              {courseForm}
             </motion.div>
           </div>
         )}

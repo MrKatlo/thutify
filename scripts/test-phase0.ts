@@ -265,6 +265,7 @@ async function main() {
       temporaryPassword: payload.temporaryPassword,
       expiresAt: payload.expiresAt,
     }),
+    updateAuthUserPassword: async () => undefined,
   });
 
   const registerResponse = await request(app, env, 'POST', '/api/auth/register', {
@@ -729,7 +730,7 @@ async function main() {
   const uploadJson = uploadPdf.json as { url: string; key: string };
   assert.ok(uploadJson.key.startsWith('pdf/'));
 
-  const fetchStoredPdf = await request(app, env, 'GET', uploadJson.url);
+  const fetchStoredPdf = await request(app, env, 'GET', uploadJson.url, { token: 'owner-token' });
   assertOk(fetchStoredPdf, 'stored pdf fetch', 200);
   assert.equal(fetchStoredPdf.response.headers.get('content-type'), 'application/pdf');
 
