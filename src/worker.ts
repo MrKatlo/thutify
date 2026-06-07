@@ -7447,8 +7447,10 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   app.get('/api/institutions/:id/reports/financial', async (context) => {
-    const payments = await listPaymentsForInstitution(context.env.DB, context.req.param('id'));
-    const invoices = await listInvoicesForInstitution(context.env.DB, context.req.param('id'));
+    const institutionId = context.req.param('id');
+    const payments = await listPaymentsForInstitution(context.env.DB, institutionId);
+    const students = await dbAll<Row>(context.env.DB, 'SELECT balance FROM student_profiles WHERE institution_id = ?', [institutionId]);
+    
     const monthlyMap = new Map<string, number>();
     for (const payment of payments) {
       const date = String(payment.payment_date || payment.created_at || nowIso()).slice(0, 7);
@@ -7456,10 +7458,8 @@ export function createApp(options: CreateAppOptions = {}) {
     }
     return context.json({
       totalRevenue: payments.reduce((sum, payment) => sum + toNumber(payment.amount_paid, 0), 0),
-      outstanding: invoices
-        .filter((invoice) => String(invoice.status || '') !== 'paid')
-        .reduce((sum, invoice) => sum + toNumber(invoice.amount, 0), 0),
-      monthly: [...monthlyMap.entries()].map(([name, revenue]) => ({ name, revenue })),
+      outstanding: students.reduce((sum, s) => sum + toNumber(s.balance, 0), 0),
+      monthly: [...monthlyMap.entries()].map(([name, revenue]) => ({ name, revenue })).sort((a, b) => a.name.localeCompare(b.name)),
     });
   });
 

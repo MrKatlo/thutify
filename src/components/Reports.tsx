@@ -5,6 +5,7 @@ import { TrendingUp, Users, DollarSign, Download, Printer, Clock, CheckSquare, B
 import { motion } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import * as cfApi from '../services/cfApi';
+import { formatMoney } from '../lib/currency';
 
 const VIEW_META: Record<string, { title: string; description: string }> = {
   student: { title: 'Student Reports', description: 'Enrollment distribution and student counts.' },
@@ -22,7 +23,8 @@ interface ReportsProps {
 }
 
 export function Reports({ initialView = 'performance' }: ReportsProps) {
-  const { institutionId } = useAuth();
+  const { institutionId, institution } = useAuth();
+  const currency = institution?.currency || 'BWP';
   const [loading, setLoading] = useState(true);
   const [reportData, setReportData] = useState<any>(null);
   const [teacherCount, setTeacherCount] = useState(0);
@@ -62,7 +64,7 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
 
   const exportCsv = () => {
     const rows = [
-      ['Metric', 'Value'],
+      ['Metric', `Value (${currency})`],
       ['Total Revenue', financial.totalRevenue],
       ['Outstanding', financial.outstanding],
       ['Total Students', enrollment.totalStudents],
@@ -89,9 +91,9 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
   }
 
   const summaryCards = [
-    { label: 'Total Revenue', value: `$${Number(financial.totalRevenue || 0).toLocaleString()}`, icon: DollarSign, color: 'text-green-600 bg-green-50', views: ['financial', 'revenue', 'performance', 'export'] },
+    { label: 'Total Revenue', value: formatMoney(Number(financial.totalRevenue || 0), currency), icon: DollarSign, color: 'text-green-600 bg-green-50', views: ['financial', 'revenue', 'performance', 'export'] },
     { label: 'Total Enrolled', value: `${enrollment.totalStudents} Students`, icon: Users, color: 'text-blue-600 bg-blue-50', views: ['student', 'performance', 'export'] },
-    { label: 'Balance Owed', value: `$${Number(financial.outstanding || 0).toLocaleString()}`, icon: Clock, color: 'text-red-600 bg-red-50', views: ['financial', 'performance', 'export'] },
+    { label: 'Balance Owed', value: formatMoney(Number(financial.outstanding || 0), currency), icon: Clock, color: 'text-red-600 bg-red-50', views: ['financial', 'performance', 'export'] },
     { label: 'Attendance', value: `${attendance.rate}%`, icon: CheckSquare, color: 'text-purple-600 bg-purple-50', views: ['attendance', 'performance', 'export'] },
     { label: 'Teachers', value: `${teacherCount}`, icon: BarChart2, color: 'text-amber-600 bg-amber-50', views: ['teacher', 'performance', 'export'] },
   ];
@@ -168,7 +170,11 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6b7280' }} />
-                      <Tooltip cursor={{ fill: '#f9fafb' }} />
+                      <Tooltip
+                        cursor={{ fill: '#f9fafb' }}
+                        formatter={(value: number) => [formatMoney(value, currency), 'Revenue']}
+                        labelStyle={{ fontWeight: 700, color: '#111827' }}
+                      />
                       <Bar dataKey="revenue" fill="#000000" radius={[4, 4, 0, 0]} barSize={40} />
                     </BarChart>
                   </ResponsiveContainer>
