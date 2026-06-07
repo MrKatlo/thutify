@@ -1,5 +1,4 @@
 -- Migration: Reclassify existing content library entries as videos when filename or MIME indicates a video
-BEGIN TRANSACTION;
 
 -- Update rows where stored MIME indicates a video
 UPDATE content_library
@@ -25,5 +24,3 @@ WHERE LOWER(COALESCE(r2_key, '')) LIKE '%.mp4'
    OR LOWER(COALESCE(r2_key, '')) LIKE '%.m4v'
    OR LOWER(COALESCE(r2_key, '')) LIKE '%.avi'
    OR LOWER(COALESCE(r2_key, '')) LIKE '%.mkv';
-
-COMMIT;

@@ -2533,12 +2533,47 @@ async function getVisibleCoursesForUser(db: D1Database, institutionId: string, u
   return [];
 }
 
+let contentLibrarySchemaReady: Promise<void> | null = null;
+
+async function ensureContentLibrarySchema(db: D1Database) {
+  if (!contentLibrarySchemaReady) {
+    contentLibrarySchemaReady = (async () => {
+      const columns = await dbAll<Row>(db, 'PRAGMA table_info(content_library)');
+      const names = new Set(columns.map((column) => String(column.name || '')));
+      const statements: string[] = [];
+      if (!names.has('course_id')) statements.push('ALTER TABLE content_library ADD COLUMN course_id TEXT');
+      if (!names.has('module_id')) statements.push('ALTER TABLE content_library ADD COLUMN module_id TEXT');
+      if (!names.has('lesson_id')) statements.push('ALTER TABLE content_library ADD COLUMN lesson_id TEXT');
+      if (!names.has('visibility')) {
+        statements.push("ALTER TABLE content_library ADD COLUMN visibility TEXT DEFAULT 'institution'");
+      }
+      for (const statement of statements) {
+        await dbRun(db, statement);
+      }
+      if (statements.length > 0) {
+        await dbRun(db, 'CREATE INDEX IF NOT EXISTS idx_content_course ON content_library(course_id)');
+        await dbRun(db, 'CREATE INDEX IF NOT EXISTS idx_content_module ON content_library(module_id)');
+        await dbRun(db, 'CREATE INDEX IF NOT EXISTS idx_content_lesson ON content_library(lesson_id)');
+        await dbRun(
+          db,
+          'CREATE INDEX IF NOT EXISTS idx_content_visibility ON content_library(institution_id, visibility)',
+        );
+      }
+    })().catch((error) => {
+      contentLibrarySchemaReady = null;
+      throw error;
+    });
+  }
+  await contentLibrarySchemaReady;
+}
+
 async function listMaterialsForUser(
   db: D1Database,
   institutionId: string,
   userId: string,
   role: string | null,
 ): Promise<Row[]> {
+  await ensureContentLibrarySchema(db);
   const visibleCourses = await getVisibleCoursesForUser(db, institutionId, userId, role);
   if (visibleCourses.length === 0) {
     return dbAll<Row>(
@@ -2590,6 +2625,7 @@ function formatMaterials(rows: Row[]): Row[] {
 }
 
 async function listMaterialsForInstitution(db: D1Database, institutionId: string) {
+  await ensureContentLibrarySchema(db);
   const rows = await dbAll<Row>(
     db,
     `SELECT *
@@ -6784,6 +6820,7 @@ export function createApp(options: CreateAppOptions = {}) {
 
   app.post('/api/institutions/:id/materials', async (context) => {
     const verified = context.get('user');
+    await ensureContentLibrarySchema(context.env.DB);
     const body = await parseRequestBody<Row>(context.req.raw);
     const materialId = newId();
     const fileType = normalizeFileType(body.type || body.file_type);
@@ -6844,6 +6881,7 @@ export function createApp(options: CreateAppOptions = {}) {
     const verified = context.get('user');
     const institutionId = context.req.param('id');
     const courseId = context.req.param('courseId');
+    await ensureContentLibrarySchema(context.env.DB);
     const role = await getUserRoleInInstitution(context.env.DB, institutionId, verified.uid);
     const visibleCourses = await getVisibleCoursesForUser(context.env.DB, institutionId, verified.uid, role);
     

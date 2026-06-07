@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import * as cfApi from '../../services/cfApi';
 import { LessonCreationWizard } from './LessonCreationWizard';
 import { LessonReader } from './LessonReader';
+import { CourseMaterialsPanel } from './CourseMaterialsPanel';
 
 interface CourseDetailProps {
   course: any;
@@ -164,7 +165,14 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
 
       <div className="bg-white border border-gray-100 rounded-3xl p-8 shadow-sm">
         <h2 className="text-3xl font-extrabold tracking-tight mb-2 text-gray-900">{course.title}</h2>
-        <p className="text-gray-500 mb-8 max-w-2xl text-sm font-medium">{course.description}</p>
+        <p className="text-gray-500 mb-6 max-w-2xl text-sm font-medium">{course.description}</p>
+
+        {institutionId && (
+          <div className="mb-8 rounded-2xl border border-gray-100 bg-gray-50/40 p-5">
+            <h3 className="text-sm font-bold text-gray-900 mb-3">Course materials</h3>
+            <CourseMaterialsPanel institutionId={institutionId} courseId={course.id} />
+          </div>
+        )}
 
         <div className="space-y-4">
           {loading ? (

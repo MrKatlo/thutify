@@ -162,6 +162,7 @@ async function loadMigrationSql() {
     fileURLToPath(new URL('../migrations/0002_complete_schema.sql', import.meta.url)),
     fileURLToPath(new URL('../migrations/0003_student_module.sql', import.meta.url)),
     fileURLToPath(new URL('../migrations/0004_teacher_module.sql', import.meta.url)),
+    fileURLToPath(new URL('../migrations/0006_add_course_association.sql', import.meta.url)),
   ];
   const migrations = await Promise.all(migrationPaths.map((path) => readFile(path, 'utf8')));
   return migrations.join('\n\n');
