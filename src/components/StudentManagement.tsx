@@ -24,6 +24,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import { useAuth } from '../hooks/useAuth';
 import { Button, Card } from './ui/Card';
+import { PageSkeleton } from './ui/PageSkeleton';
 import type { Course, PaginatedResult, StudentSummary } from '../types';
 import * as cfApi from '../services/cfApi';
 
@@ -184,7 +185,7 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 }
 
 export function StudentManagement({ activeTab }: StudentManagementProps) {
-  const { profile, institutionId, canManageInstitution, isTeacher } = useAuth();
+  const { profile, institutionId, canManageInstitution, isTeacher, loading: authLoading } = useAuth();
   const canManageLifecycle = Boolean(canManageInstitution);
 
   const viewCopy = TAB_COPY[activeTab] || TAB_COPY['students/all'];
@@ -1114,6 +1115,10 @@ export function StudentManagement({ activeTab }: StudentManagementProps) {
     if (activeTab === 'students/export') return renderExport();
     return renderAllStudents();
   };
+
+  if (authLoading) {
+    return <PageSkeleton cards={4} />;
+  }
 
   if (!canSeeStudentArea) {
     return (

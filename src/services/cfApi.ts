@@ -1192,7 +1192,15 @@ export async function incrementMaterialDownloads(institutionId: string, material
   return apiRequest('POST', `/institutions/${institutionId}/materials/${materialId}/download`);
 }
 
-export async function uploadFile(file: File, key?: string, token?: string): Promise<{ key: string; url: string; contentType: string; size: number; filename: string }> {
+export type UploadFileResult = {
+  key: string;
+  url: string;
+  contentType: string;
+  size: number;
+  filename: string;
+};
+
+export async function uploadFile(file: File, key?: string, token?: string): Promise<UploadFileResult> {
   const formData = new FormData();
   formData.append('file', file);
   if (key) formData.append('key', key);
@@ -1200,6 +1208,46 @@ export async function uploadFile(file: File, key?: string, token?: string): Prom
   return apiRequest('POST', '/storage/upload', {
     body: formData,
     token,
+  });
+}
+
+export async function uploadFileWithProgress(
+  file: File,
+  onProgress?: (percent: number) => void,
+  key?: string,
+): Promise<UploadFileResult> {
+  const authToken = await getAuthToken();
+  const url = buildUrl('/storage/upload');
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    formData.append('file', file);
+    if (key) formData.append('key', key);
+
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      try {
+        const data = JSON.parse(xhr.responseText) as UploadFileResult & { error?: string; message?: string };
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data);
+          return;
+        }
+        reject(new Error(data?.error || data?.message || `HTTP ${xhr.status}`));
+      } catch {
+        reject(new Error(`Upload failed: HTTP ${xhr.status}`));
+      }
+    });
+
+    xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+    xhr.open('POST', url);
+    xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+    xhr.send(formData);
   });
 }
 

@@ -14,17 +14,13 @@ import { UserManagement } from './components/UserManagement';
 import { Reports } from './components/Reports';
 import { TeacherReports } from './components/TeacherReports';
 import { TeacherProfile } from './components/TeacherProfile';
-import { ModuleManagement } from './components/ModuleManagement';
-import { LessonManagement } from './components/LessonManagement';
 import { Assessment } from './components/Assessment';
 import { Attendance } from './components/Attendance';
 import { LiveClasses } from './components/LiveClasses';
 import { Discussions } from './components/Discussions';
 import { Messaging } from './components/Messaging';
 import { Certificates } from './components/Certificates';
-import { ContentLibrary } from './components/ContentLibrary';
 import { ContentManagement } from './components/ContentManagement';
-import { CourseSyllabus } from './components/courses/CourseSyllabus';
 import { CourseMaterials } from './components/courses/CourseMaterials';
 import { ScheduleCalendar } from './components/ScheduleCalendar';
 import { SystemSettings } from './components/SystemSettings';
@@ -385,12 +381,12 @@ export default function App() {
                         <CourseList key={activeTab} activeTab={activeTab} setActiveTab={setActiveTab} />
                       );
                       if (activeTab === 'assessment' || activeTab.startsWith('assignments/')) return <Assessment initialMode={activeTab === 'assessment' ? 'assignments/all' : activeTab} />;
-                      if (activeTab === 'content/syllabus') return <CourseSyllabus />;
-                      if (activeTab === 'content/modules') return (canManageInstitution || isTeacher) ? <ModuleManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'content/lessons') return (canManageInstitution || isTeacher) ? <LessonManagement /> : <Dashboard setActiveTab={setActiveTab} />;
-                      if (activeTab === 'content/video') return <ContentLibrary initialCategory="Lecture Videos" />;
-                      if (activeTab === 'content/resources') return <ContentLibrary initialCategory="Syllabi & PDFs" />;
-                      if (activeTab === 'content/upload') return <ContentLibrary initialCategory="Syllabi & PDFs" autoOpenUpload />;
+                      if (activeTab.startsWith('content/')) {
+                        if (activeTab === 'content/modules' || activeTab === 'content/lessons' || activeTab === 'content/syllabus') {
+                          return <CourseList key="courses-all-redirect" activeTab="courses/all" setActiveTab={setActiveTab} />;
+                        }
+                        return <CourseMaterials key="courses-materials-redirect" />;
+                      }
                       if (activeTab === 'assignments/scheduling') return <ScheduleCalendar />;
                       if (activeTab === 'student/attendance') return isStudent ? (
                         <Attendance initialView="dashboard" />

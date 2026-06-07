@@ -6,6 +6,7 @@ import { Plus, X, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import * as cfApi from '../services/cfApi';
 import type { PaymentInput, StudentSummary } from '../types';
+import { formatMoney } from '../lib/currency';
 import { PaymentList } from './finance/PaymentList';
 import { InvoiceList } from './finance/InvoiceList';
 import { RefundList } from './finance/RefundList';
@@ -76,10 +77,12 @@ function StudentBalanceTable({
   students,
   loading,
   emptyMessage,
+  currency = 'USD',
 }: {
   students: StudentSummary[];
   loading: boolean;
   emptyMessage: string;
+  currency?: string;
 }) {
   if (loading) {
     return (
@@ -131,9 +134,9 @@ function StudentBalanceTable({
                     {status}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-sm font-semibold text-gray-700">${paid.toLocaleString()}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">${fee.toLocaleString()}</td>
-                <td className="px-6 py-4 text-right text-sm font-black text-red-600">${balance.toLocaleString()}</td>
+                <td className="px-6 py-4 text-sm font-semibold text-gray-700">{formatMoney(paid, currency)}</td>
+                <td className="px-6 py-4 text-sm text-gray-600">{formatMoney(fee, currency)}</td>
+                <td className="px-6 py-4 text-right text-sm font-black text-red-600">{formatMoney(balance, currency)}</td>
               </tr>
             );
           })}
@@ -144,7 +147,8 @@ function StudentBalanceTable({
 }
 
 export function Financials({ initialTab = 'payments' }: FinancialsProps) {
-  const { profile, canManageInstitution, institutionId } = useAuth();
+  const { profile, canManageInstitution, institutionId, institution } = useAuth();
+  const currency = institution?.currency || 'USD';
   const toast = useToast();
   const activeTab = resolveFinanceTab(initialTab);
 
@@ -263,7 +267,7 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
           <p><strong>Reference:</strong> ${p.reference_number || p.referenceNumber || 'N/A'}</p>
           <p><strong>Student:</strong> ${p.student_name || p.studentName}</p>
           <p><strong>Course:</strong> ${p.course_name || p.courseName}</p>
-          <p><strong>Amount Paid:</strong> $${(p.amount_paid || p.amountPaid).toLocaleString()}</p>
+          <p><strong>Amount Paid:</strong> ${formatMoney(Number(p.amount_paid || p.amountPaid || 0), currency)}</p>
           <p><strong>Status:</strong> ${p.status?.toUpperCase()}</p>
           <p><strong>Date:</strong> ${new Date(p.created_at || Date.now()).toLocaleDateString()}</p>
           <hr style="margin:20px 0; border:none; border-top:1px dashed #ccc;" />
@@ -326,11 +330,11 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
           <Card className="border-none bg-black text-white shadow-xl">
             <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Total Paid</p>
-            <h3 className="mt-2 text-3xl font-black">${totalReceived.toLocaleString()}</h3>
+            <h3 className="mt-2 text-3xl font-black">{formatMoney(totalReceived, currency)}</h3>
           </Card>
           <Card className="border-red-100 bg-red-50">
             <p className="text-[10px] font-bold uppercase tracking-widest text-red-600">Invoiced Amount</p>
-            <h3 className="mt-2 text-3xl font-black text-red-900">${totalInvoiced.toLocaleString()}</h3>
+            <h3 className="mt-2 text-3xl font-black text-red-900">{formatMoney(totalInvoiced, currency)}</h3>
           </Card>
           <Card>
             <p className="text-[10px] font-bold uppercase tracking-widest text-green-600">Account Status</p>
@@ -427,15 +431,15 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Card className="bg-black p-5 text-white">
               <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Total Revenue</p>
-              <p className="mt-2 text-3xl font-black">${totalReceived.toLocaleString()}</p>
+              <p className="mt-2 text-3xl font-black">{formatMoney(totalReceived, currency)}</p>
             </Card>
             <Card className="p-5">
               <p className="text-[10px] font-bold uppercase tracking-widest text-red-500">Outstanding</p>
-              <p className="mt-2 text-3xl font-black text-gray-900">${totalOutstanding.toLocaleString()}</p>
+              <p className="mt-2 text-3xl font-black text-gray-900">{formatMoney(totalOutstanding, currency)}</p>
             </Card>
             <Card className="p-5">
               <p className="text-[10px] font-bold uppercase tracking-widest text-green-600">Refunded</p>
-              <p className="mt-2 text-3xl font-black text-gray-900">${totalRefunded.toLocaleString()}</p>
+              <p className="mt-2 text-3xl font-black text-gray-900">{formatMoney(totalRefunded, currency)}</p>
             </Card>
           </div>
           {activeTab === 'expenses' && (
@@ -462,19 +466,20 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
           students={balanceStudents}
           loading={loading}
           emptyMessage="No students with outstanding balances."
+          currency={currency}
         />
       );
     }
 
     if (activeTab === 'paid') {
       return (
-        <StudentBalanceTable students={paidStudents} loading={loading} emptyMessage="No fully paid students yet." />
+        <StudentBalanceTable students={paidStudents} loading={loading} emptyMessage="No fully paid students yet." currency={currency} />
       );
     }
 
     if (activeTab === 'unpaid') {
       return (
-        <StudentBalanceTable students={unpaidStudents} loading={loading} emptyMessage="No unpaid students found." />
+        <StudentBalanceTable students={unpaidStudents} loading={loading} emptyMessage="No unpaid students found." currency={currency} />
       );
     }
 
@@ -484,6 +489,7 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
           students={partialStudents}
           loading={loading}
           emptyMessage="No students with partial payments."
+          currency={currency}
         />
       );
     }
@@ -516,19 +522,19 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-4">
         <Card className="border-none bg-black text-white shadow-xl">
           <p className="text-[10px] font-bold uppercase tracking-widest opacity-60">Revenue Received</p>
-          <h3 className="mt-1 text-3xl font-black">${totalReceived.toLocaleString()}</h3>
+          <h3 className="mt-1 text-3xl font-black">{formatMoney(totalReceived, currency)}</h3>
         </Card>
         <Card>
           <p className="text-[10px] font-bold uppercase tracking-widest text-red-500">Outstanding</p>
-          <h3 className="mt-1 text-3xl font-black text-gray-900">${totalOutstanding.toLocaleString()}</h3>
+          <h3 className="mt-1 text-3xl font-black text-gray-900">{formatMoney(totalOutstanding, currency)}</h3>
         </Card>
         <Card>
           <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Total Invoiced</p>
-          <h3 className="mt-1 text-3xl font-black text-gray-900">${totalInvoiced.toLocaleString()}</h3>
+          <h3 className="mt-1 text-3xl font-black text-gray-900">{formatMoney(totalInvoiced, currency)}</h3>
         </Card>
         <Card>
           <p className="text-[10px] font-bold uppercase tracking-widest text-green-600">Refunds Processed</p>
-          <h3 className="mt-1 text-3xl font-black text-gray-900">${totalRefunded.toLocaleString()}</h3>
+          <h3 className="mt-1 text-3xl font-black text-gray-900">{formatMoney(totalRefunded, currency)}</h3>
         </Card>
       </div>
 
@@ -588,7 +594,7 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="mb-1.5 block text-xs font-bold uppercase text-gray-700">Amount Paid ($)</label>
+                    <label className="mb-1.5 block text-xs font-bold uppercase text-gray-700">Amount Paid ({currency})</label>
                     <input
                       required
                       type="number"

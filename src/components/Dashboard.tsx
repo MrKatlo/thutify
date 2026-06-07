@@ -7,6 +7,8 @@ import { formatDistanceToNow } from 'date-fns';
 import * as cfApi from '../services/cfApi';
 import type { AuditLogEntry } from '../services/cfApi';
 import type { StudentSummary } from '../types';
+import { formatMoney } from '../lib/currency';
+import { PageSkeleton } from './ui/PageSkeleton';
 
 interface DashboardProps {
   setActiveTab: (tab: string) => void;
@@ -56,7 +58,8 @@ function formatAuditActivity(entry: AuditLogEntry): ActivityItem {
 }
 
 export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardProps) {
-  const { profile, canManageInstitution, isTeacher, institutionId } = useAuth();
+  const { profile, canManageInstitution, isTeacher, institutionId, institution } = useAuth();
+  const currency = institution?.currency || 'USD';
 
   // Owner & Teacher stats
   const [stats, setStats] = useState({
@@ -71,9 +74,9 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
   const [studentStats, setStudentStats] = useState({
     enrolledCount: 0,
     completedCount: 0,
-    attendanceRate: 95,
-    balance: 1000,
-    paymentStatus: 'unpaid'
+    attendanceRate: 0,
+    balance: 0,
+    paymentStatus: 'paid',
   });
 
   // Teacher metrics
@@ -304,7 +307,7 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
     { label: 'Total Students', value: stats.studentsCount.toString(), icon: Users, color: 'bg-blue-50 text-blue-600', tab: 'students/all' },
     { label: 'Total Teachers', value: stats.teachersCount.toString(), icon: BookOpen, color: 'bg-green-50 text-green-600', tab: 'teachers/all' },
     { label: 'Total Courses', value: stats.coursesCount.toString(), icon: Calendar, color: 'bg-orange-50 text-orange-600', tab: 'courses' },
-    { label: 'Payments Received', value: `$${stats.totalRevenue.toLocaleString()}`, icon: DollarSign, color: 'bg-purple-50 text-purple-600', tab: 'financials' },
+    { label: 'Payments Received', value: formatMoney(stats.totalRevenue, currency), icon: DollarSign, color: 'bg-purple-50 text-purple-600', tab: 'financials' },
   ];
 
   const getTeacherStatsList = () => [
@@ -318,7 +321,7 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
     { label: 'Enrolled Courses', value: studentStats.enrolledCount.toString(), icon: BookOpen, color: 'bg-blue-50 text-blue-600', tab: 'courses' },
     { label: 'Completed Lessons', value: studentStats.completedCount.toString(), icon: CheckCircle, color: 'bg-green-50 text-green-600', tab: 'courses' },
     { label: 'Attendance Rate', value: `${studentStats.attendanceRate}%`, icon: Calendar, color: 'bg-purple-50 text-purple-600', tab: 'student/attendance' },
-    { label: 'Payment Balance', value: `$${studentStats.balance.toLocaleString()}`, icon: DollarSign, color: studentStats.balance > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600', tab: 'finance/payments' },
+    { label: 'Payment Balance', value: formatMoney(studentStats.balance, currency), icon: DollarSign, color: studentStats.balance > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600', tab: 'finance/payments' },
   ];
 
   const statsList = canManageInstitution
@@ -328,10 +331,10 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
     : getStudentStatsList();
 
   const contentActions = [
-    { label: 'Syllabus', icon: BookOpen, tab: 'content/syllabus' },
-    { label: 'Modules', icon: Layers, tab: 'content/modules' },
-    { label: 'Lessons', icon: FileText, tab: 'content/lessons' },
-    { label: 'Upload Materials', icon: Plus, tab: 'content/upload' },
+    { label: 'All Courses', icon: BookOpen, tab: 'courses/all' },
+    { label: 'Materials', icon: FileText, tab: 'courses/materials' },
+    { label: 'Curriculum', icon: Layers, tab: 'courses/categories' },
+    { label: 'Enrollment', icon: Users, tab: 'courses/enrollment' },
   ];
 
   const teacherOnlyView = isTeacher && !canManageInstitution;
@@ -445,6 +448,10 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
     );
   }
 
+  if (loading && !canManageInstitution && !isTeacher && profile?.role === 'student') {
+    return <PageSkeleton cards={4} />;
+  }
+
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
@@ -459,7 +466,11 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-10">
-        {statsList.map((stat, i) => (
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-28 rounded-3xl bg-gray-100 animate-pulse" />
+          ))
+        ) : statsList.map((stat, i) => (
           <motion.div
             key={stat.label}
             initial={{ opacity: 0, y: 20 }}
@@ -481,7 +492,7 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
         ))}
       </div>
 
-      {(isTeacher || canManageInstitution) && (
+      {(isTeacher || canManageInstitution) && !loading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-10">
           {contentActions.map((item) => (
             <button
@@ -494,7 +505,7 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
               </div>
               <div>
                 <p className="text-sm font-bold text-gray-900">{item.label}</p>
-                <p className="text-xs text-gray-400 uppercase tracking-widest">Course content</p>
+                <p className="text-xs text-gray-400 uppercase tracking-widest">Courses</p>
               </div>
             </button>
           ))}
@@ -668,7 +679,7 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
                                <p className="text-[10px] text-red-500 font-bold uppercase tracking-wider">Unpaid Balance</p>
                              </div>
                            </div>
-                           <span className="text-sm font-black text-red-600">${balance.toLocaleString()}</span>
+                           <span className="text-sm font-black text-red-600">{formatMoney(balance, currency)}</span>
                          </div>
                        );
                      })

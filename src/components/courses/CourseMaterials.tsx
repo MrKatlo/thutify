@@ -29,6 +29,7 @@ export function CourseMaterials() {
   const [materials, setMaterials] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const [scope, setScope] = useState<Scope>('course');
   const [selectedCourseId, setSelectedCourseId] = useState('');
@@ -138,6 +139,7 @@ export function CourseMaterials() {
     }
 
     setUploading(true);
+    setUploadProgress(0);
     try {
       const MAX_BYTES = 50 * 1024 * 1024;
       if (file && file.size > MAX_BYTES) {
@@ -161,7 +163,7 @@ export function CourseMaterials() {
       }
 
       if (file) {
-        const uploaded = await cfApi.uploadFile(file);
+        const uploaded = await cfApi.uploadFileWithProgress(file, setUploadProgress);
         payload.download_url = uploaded.url;
         payload.r2_key = uploaded.key;
         payload.file_type = uploaded.contentType;
@@ -182,6 +184,7 @@ export function CourseMaterials() {
       toast.error('Upload failed.');
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -340,21 +343,57 @@ export function CourseMaterials() {
               ))}
             </select>
 
-            <input type="file" onChange={handleFileChange} className="w-full text-sm" />
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Upload a file</p>
+              <input
+                id="material-file-input"
+                type="file"
+                onChange={handleFileChange}
+                className="sr-only"
+              />
+              <label
+                htmlFor="material-file-input"
+                className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center transition hover:border-black hover:bg-white"
+              >
+                <Upload className="h-7 w-7 text-gray-700" />
+                <span className="text-sm font-bold text-gray-900">
+                  {file ? file.name : 'Browse files'}
+                </span>
+                <span className="text-xs text-gray-500">PDF, video, slides, documents</span>
+              </label>
+            </div>
 
-            <input
-              value={externalLink}
-              onChange={(e) => {
-                setExternalLink(e.target.value);
-                if (e.target.value) setSelectedCategory('Links');
-              }}
-              placeholder="Or paste a link"
-              className="w-full px-3 py-2 border border-gray-100 rounded-xl text-sm"
-            />
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Or paste a link</p>
+              <input
+                value={externalLink}
+                onChange={(e) => {
+                  setExternalLink(e.target.value);
+                  if (e.target.value) setSelectedCategory('Links');
+                }}
+                placeholder="https://example.com/resource"
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black"
+              />
+            </div>
 
-            <Button type="submit" className="w-full bg-black text-white gap-2" disabled={uploading}>
-              <Upload className="w-4 h-4" />
-              {uploading ? 'Uploading…' : 'Upload'}
+            {uploading && file && (
+              <div>
+                <div className="mb-1 flex justify-between text-xs text-gray-500">
+                  <span>Uploading</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+                  <div
+                    className="h-full rounded-full bg-black transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <Button type="submit" className="w-full gap-2 bg-black text-white" disabled={uploading}>
+              <Upload className="h-4 w-4" />
+              {uploading ? `Uploading… ${uploadProgress}%` : 'Save to Materials'}
             </Button>
           </form>
         </Card>

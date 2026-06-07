@@ -1,9 +1,17 @@
-import { ChangeEvent, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowLeft, ArrowRight, Bold, Italic, UploadCloud, X, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Link2,
+  Trash2,
+  UploadCloud,
+  X,
+} from 'lucide-react';
 import { useToast } from '../ui/Toast';
 import { Button } from '../ui/Card';
 import * as cfApi from '../../services/cfApi';
+import { inferMaterialCategory } from '../../lib/materialCategories';
 import type { Course, Module } from '../../types';
 
 type ResourceType = 'Video' | 'PDF' | 'Document' | 'Image' | 'Slides' | 'Other';
@@ -73,13 +81,16 @@ export function LessonCreationWizard({
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
   const [content, setContent] = useState('');
-  const [resourceTitle, setResourceTitle] = useState('');
-  const [resourceUrl, setResourceUrl] = useState('');
-  const [resourceType, setResourceType] = useState<ResourceType>('PDF');
+  const [linkTitle, setLinkTitle] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkType, setLinkType] = useState<ResourceType>('PDF');
+  const [fileTitle, setFileTitle] = useState('');
   const [resources, setResources] = useState<LessonResource[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [isAddingLink, setIsAddingLink] = useState(false);
 
   const createdDate = useMemo(() => new Date().toLocaleDateString(), []);
 
@@ -135,26 +146,54 @@ export function LessonCreationWizard({
     textarea.focus();
   };
 
-  const addResource = () => {
-    const url = resourceUrl.trim();
-    const titleValue = resourceTitle.trim();
+  const addLinkResource = async () => {
+    const url = linkUrl.trim();
+    const titleValue = linkTitle.trim();
     if (!titleValue || !url) {
-      toast.warning('Resource title and URL are required.');
+      toast.warning('Enter a title and link URL.');
       return;
     }
-    setResources((current) => [
-      ...current,
-      {
-        id: makeLocalId(),
+    if (!institutionId) {
+      toast.error('Institution access required.');
+      return;
+    }
+
+    setIsAddingLink(true);
+    try {
+      const material = await cfApi.createMaterial(institutionId, {
         title: titleValue,
-        url,
-        type: resourceType,
-        source: 'link',
-      },
-    ]);
-    setResourceTitle('');
-    setResourceUrl('');
-    setResourceType('PDF');
+        name: titleValue,
+        category: 'Links',
+        type: 'Link',
+        download_url: url,
+        downloadUrl: url,
+        course_id: course.id,
+        module_id: module.id,
+        visibility: 'course',
+        description: `Lesson link for ${title || 'new lesson'}`,
+      });
+
+      setResources((current) => [
+        ...current,
+        {
+          id: makeLocalId(),
+          title: titleValue,
+          url,
+          type: linkType,
+          source: 'link',
+          materialId: material.id,
+        },
+      ]);
+      setLinkTitle('');
+      setLinkUrl('');
+      setLinkType('PDF');
+      toast.success('Link added to lesson and Materials.');
+    } catch (error) {
+      console.error('Link save failed:', error);
+      toast.error('Could not save link to Materials.');
+    } finally {
+      setIsAddingLink(false);
+    }
   };
 
   const removeResource = (resourceId: string) => {
@@ -164,50 +203,51 @@ export function LessonCreationWizard({
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !institutionId) return;
+
     setIsUploading(true);
+    setUploadProgress(0);
 
     try {
-      const uploadResult = await cfApi.uploadFile(file);
+      const uploadResult = await cfApi.uploadFileWithProgress(file, setUploadProgress);
       const fileType = normalizeResourceType(file.type, file.name);
-      const extMatch = file.name.match(/\.([a-z0-9]+)$/i);
-      const ext = extMatch ? extMatch[1].toLowerCase() : '';
-      const isVideo = file.type.includes('video') || ['mp4', 'mov', 'webm'].includes(ext);
+      const category = inferMaterialCategory(file.name, file.type);
+      const resourceTitleLabel = fileTitle.trim() || file.name;
+
       const material = await cfApi.createMaterial(institutionId, {
         name: file.name,
-        title: file.name,
-        type: isVideo ? 'Video' : fileType,
-        file_type: isVideo ? 'video' : file.type,
-        file_size: file.size,
-        downloadUrl: uploadResult.url,
+        title: resourceTitleLabel,
+        type: fileType,
+        file_type: uploadResult.contentType || file.type,
+        file_size: uploadResult.size || file.size,
         download_url: uploadResult.url,
-        category: isVideo ? 'Lecture Videos' : 'Lesson Resource',
+        downloadUrl: uploadResult.url,
+        r2_key: uploadResult.key,
+        category,
         description: `Lesson attachment for ${title || 'new lesson'}`,
         course_id: course.id,
         module_id: module.id,
+        visibility: 'course',
       });
 
-      const resourceTitleLabel = resourceTitle.trim() || file.name;
-      const resourceTypeLabel = isVideo ? 'Video' : fileType;
       setResources((current) => [
         ...current,
         {
           id: makeLocalId(),
           title: resourceTitleLabel,
           url: uploadResult.url,
-          type: resourceTypeLabel,
+          type: fileType === 'Other' && category === 'Videos' ? 'Video' : fileType,
           source: 'upload',
           materialId: material.id,
         },
       ]);
-      setResourceTitle('');
-      setResourceUrl('');
-      setResourceType('PDF');
-      toast.success('Attachment uploaded and added to resources.');
+      setFileTitle('');
+      toast.success('File uploaded — visible in Materials and this lesson.');
     } catch (error) {
       console.error('Upload failed:', error);
       toast.error('Unable to upload attachment.');
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
       setFileInputKey((current) => current + 1);
     }
   };
@@ -249,198 +289,259 @@ export function LessonCreationWizard({
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
-          className="relative w-full max-w-3xl bg-white rounded-3xl p-8 shadow-2xl overflow-hidden"
+          className="relative flex max-h-[min(90vh,820px)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <div>
-              <h3 className="text-2xl font-black text-gray-900">Create Lesson</h3>
-              <p className="text-sm text-gray-500 mt-1">Step {step} of 3 — build a richer lesson experience.</p>
+          <div className="shrink-0 border-b border-gray-100 px-6 py-5 sm:px-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-2xl font-black text-gray-900">Create Lesson</h3>
+                <p className="mt-1 text-sm text-gray-500">Step {step} of 3 — build a richer lesson experience.</p>
+              </div>
+              <button type="button" onClick={onClose} className="text-gray-500 hover:text-black">
+                <X className="h-5 w-5" />
+              </button>
             </div>
-            <button type="button" onClick={onClose} className="text-gray-500 hover:text-black">
-              <X className="w-5 h-5" />
-            </button>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-[280px_1fr]">
-            <div className="space-y-4 rounded-3xl border border-gray-100 bg-gray-50 p-5">
+          <div className="grid min-h-0 flex-1 gap-0 overflow-hidden md:grid-cols-[240px_1fr]">
+            <div className="hidden shrink-0 space-y-4 border-r border-gray-100 bg-gray-50 p-5 md:block">
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Lesson details</p>
-                <h4 className="font-semibold text-gray-900 mt-2">{course.title}</h4>
+                <h4 className="mt-2 font-semibold text-gray-900">{course.title}</h4>
                 <p className="text-sm text-gray-500">Module: {module.title}</p>
                 <p className="text-sm text-gray-500">Created: {createdDate}</p>
               </div>
-              <div className="space-y-3">
-                <div className={`rounded-2xl p-4 ${step === 1 ? 'bg-white border border-black' : 'bg-transparent border border-gray-200'}`}>
-                  <p className="text-sm font-semibold text-gray-900">Step 1</p>
-                  <p className="text-xs text-gray-500 mt-1">Lesson information</p>
-                </div>
-                <div className={`rounded-2xl p-4 ${step === 2 ? 'bg-white border border-black' : 'bg-transparent border border-gray-200'}`}>
-                  <p className="text-sm font-semibold text-gray-900">Step 2</p>
-                  <p className="text-xs text-gray-500 mt-1">Rich lesson content</p>
-                </div>
-                <div className={`rounded-2xl p-4 ${step === 3 ? 'bg-white border border-black' : 'bg-transparent border border-gray-200'}`}>
-                  <p className="text-sm font-semibold text-gray-900">Step 3</p>
-                  <p className="text-xs text-gray-500 mt-1">Resources and attachments</p>
-                </div>
+              <div className="space-y-2">
+                {[
+                  { n: 1, label: 'Lesson information' },
+                  { n: 2, label: 'Rich lesson content' },
+                  { n: 3, label: 'Resources & files' },
+                ].map((item) => (
+                  <div
+                    key={item.n}
+                    className={`rounded-2xl p-3 ${step === item.n ? 'border border-black bg-white' : 'border border-gray-200 bg-transparent'}`}
+                  >
+                    <p className="text-sm font-semibold text-gray-900">Step {item.n}</p>
+                    <p className="mt-0.5 text-xs text-gray-500">{item.label}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="space-y-6">
-              {step === 1 && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-semibold text-gray-900">Lesson title</label>
-                    <input
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      placeholder="Enter a clear lesson title"
-                      className="w-full mt-2 rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-900">Lesson summary</label>
-                    <textarea
-                      value={summary}
-                      onChange={(event) => setSummary(event.target.value)}
-                      placeholder="A short overview students will see before they start."
-                      className="w-full mt-2 min-h-[120px] rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {step === 2 && (
-                <div className="space-y-4">
-                  <div className="rounded-3xl border border-gray-200 bg-gray-50 p-4">
-                    <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => applyFormatting('heading')} className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100">Heading</button>
-                      <button type="button" onClick={() => applyFormatting('bold')} className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100">Bold</button>
-                      <button type="button" onClick={() => applyFormatting('italic')} className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100">Italic</button>
-                      <button type="button" onClick={() => applyFormatting('bullet')} className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100">Bullet</button>
-                      <button type="button" onClick={() => applyFormatting('number')} className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100">Numbered</button>
-                      <button type="button" onClick={() => applyFormatting('link')} className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100">Link</button>
-                      <button type="button" onClick={() => applyFormatting('table')} className="rounded-2xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100">Table</button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-900">Lesson content</label>
-                    <textarea
-                      ref={textareaRef}
-                      value={content}
-                      onChange={(event) => setContent(event.target.value)}
-                      placeholder="Create lesson content with headings, links, bullet lists, and rich notes."
-                      className="w-full mt-2 min-h-[260px] rounded-3xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {step === 3 && (
-                <div className="space-y-6">
-                  <div className="space-y-4 rounded-3xl border border-gray-200 bg-white p-5">
-                    <div className="flex items-center gap-3">
-                      <UploadCloud className="w-5 h-5 text-gray-500" />
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">Add resources</p>
-                        <p className="text-xs text-gray-500">Include links or upload attachments for students.</p>
-                      </div>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex-1 overflow-y-auto px-6 py-5 sm:px-8">
+                {step === 1 && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-semibold text-gray-900">Lesson title</label>
                       <input
-                        value={resourceTitle}
-                        onChange={(event) => setResourceTitle(event.target.value)}
-                        placeholder="Resource title"
-                        className="w-full rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
-                      />
-                      <input
-                        value={resourceUrl}
-                        onChange={(event) => setResourceUrl(event.target.value)}
-                        placeholder="Resource URL"
-                        className="w-full rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
+                        value={title}
+                        onChange={(event) => setTitle(event.target.value)}
+                        placeholder="Enter a clear lesson title"
+                        className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
                       />
                     </div>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <select
-                        value={resourceType}
-                        onChange={(event) => setResourceType(event.target.value as ResourceType)}
-                        className="w-full sm:w-48 rounded-3xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
-                      >
-                        <option value="Video">Video</option>
-                        <option value="PDF">PDF</option>
-                        <option value="Document">Document</option>
-                        <option value="Image">Image</option>
-                        <option value="Slides">Slides</option>
-                        <option value="Other">Other</option>
-                      </select>
-                      <div className="flex gap-3">
-                        <Button type="button" onClick={addResource} className="bg-black text-white">Add link</Button>
-                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
-                          {isUploading ? 'Uploading…' : 'Upload Attachment'}
-                        </Button>
-                      </div>
+                    <div>
+                      <label className="text-sm font-semibold text-gray-900">Lesson summary</label>
+                      <textarea
+                        value={summary}
+                        onChange={(event) => setSummary(event.target.value)}
+                        placeholder="A short overview students will see before they start."
+                        className="mt-2 min-h-[100px] w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
+                      />
                     </div>
-                    <input
-                      key={fileInputKey}
-                      ref={fileInputRef}
-                      type="file"
-                      className="hidden"
-                      onChange={handleFileUpload}
-                    />
                   </div>
+                )}
 
-                  <div className="space-y-3 rounded-3xl border border-gray-200 bg-gray-50 p-5">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">Resource preview</p>
-                        <p className="text-xs text-gray-500">Students will see these links inside the lesson content after creation.</p>
-                      </div>
-                      <span className="rounded-full bg-black px-3 py-1 text-xs font-semibold text-white">{resources.length} added</span>
-                    </div>
-
-                    {resources.length === 0 ? (
-                      <div className="rounded-3xl border border-dashed border-gray-200 bg-white p-5 text-sm text-gray-500 text-center">
-                        No resources added yet. Add a link or upload a file to attach resources to the lesson.
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {resources.map((resource) => (
-                          <div key={resource.id} className="flex flex-col gap-3 rounded-3xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div>
-                              <p className="font-semibold text-gray-900">{resource.title}</p>
-                              <p className="text-sm text-gray-500">{resource.type} • {resource.source === 'upload' ? 'Uploaded file' : 'Link'}</p>
-                              <a href={resource.url} target="_blank" rel="noreferrer" className="text-sm text-indigo-600 hover:text-indigo-800 underline break-all">{resource.url}</a>
-                            </div>
-                            <Button type="button" variant="ghost" onClick={() => removeResource(resource.id)} className="text-red-600 hover:text-red-800">
-                              <Trash2 className="w-4 h-4" />
-                              Remove
-                            </Button>
-                          </div>
+                {step === 2 && (
+                  <div className="space-y-4">
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
+                      <div className="flex flex-wrap gap-2">
+                        {(['heading', 'bold', 'italic', 'bullet', 'number', 'link', 'table'] as const).map((fmt) => (
+                          <button
+                            key={fmt}
+                            type="button"
+                            onClick={() => applyFormatting(fmt)}
+                            className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold capitalize text-gray-700 hover:bg-gray-100"
+                          >
+                            {fmt}
+                          </button>
                         ))}
                       </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-semibold text-gray-900">Lesson content</label>
+                      <textarea
+                        ref={textareaRef}
+                        value={content}
+                        onChange={(event) => setContent(event.target.value)}
+                        placeholder="Create lesson content with headings, links, bullet lists, and rich notes."
+                        className="mt-2 min-h-[200px] w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {step === 3 && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-gray-600">
+                      Add a web link or upload a file. Everything you add here also appears under{' '}
+                      <span className="font-semibold text-gray-900">Courses → Materials</span>.
+                    </p>
+
+                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
+                      <div className="mb-3 flex items-center gap-2">
+                        <Link2 className="h-4 w-4 text-indigo-600" />
+                        <p className="text-sm font-bold text-gray-900">Add a link here</p>
+                      </div>
+                      <p className="mb-3 text-xs text-gray-500">Paste a URL to a video, PDF, or external resource.</p>
+                      <div className="space-y-3">
+                        <input
+                          value={linkTitle}
+                          onChange={(event) => setLinkTitle(event.target.value)}
+                          placeholder="Link title (e.g. Lecture slides)"
+                          className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black"
+                        />
+                        <input
+                          value={linkUrl}
+                          onChange={(event) => setLinkUrl(event.target.value)}
+                          placeholder="https://example.com/resource"
+                          className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black"
+                        />
+                        <div className="flex flex-wrap items-center gap-3">
+                          <select
+                            value={linkType}
+                            onChange={(event) => setLinkType(event.target.value as ResourceType)}
+                            className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none"
+                          >
+                            <option value="Video">Video</option>
+                            <option value="PDF">PDF</option>
+                            <option value="Document">Document</option>
+                            <option value="Image">Image</option>
+                            <option value="Slides">Slides</option>
+                            <option value="Other">Other</option>
+                          </select>
+                          <Button
+                            type="button"
+                            onClick={() => void addLinkResource()}
+                            disabled={isAddingLink}
+                            className="bg-indigo-600 text-white hover:bg-indigo-700"
+                          >
+                            {isAddingLink ? 'Saving…' : 'Add link'}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4">
+                      <div className="mb-3 flex items-center gap-2">
+                        <UploadCloud className="h-4 w-4 text-emerald-600" />
+                        <p className="text-sm font-bold text-gray-900">Upload a file here</p>
+                      </div>
+                      <p className="mb-3 text-xs text-gray-500">PDFs, videos, presentations, and documents up to 50MB.</p>
+                      <input
+                        value={fileTitle}
+                        onChange={(event) => setFileTitle(event.target.value)}
+                        placeholder="Display name (optional — defaults to filename)"
+                        className="mb-3 w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black"
+                      />
+                      <input
+                        key={fileInputKey}
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        onChange={handleFileUpload}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-emerald-300 bg-white px-4 py-6 text-center transition hover:border-emerald-500 hover:bg-emerald-50/50 disabled:opacity-60"
+                      >
+                        <UploadCloud className="h-8 w-8 text-emerald-600" />
+                        <span className="text-sm font-bold text-gray-900">
+                          {isUploading ? 'Uploading…' : 'Click to choose a file'}
+                        </span>
+                        <span className="text-xs text-gray-500">or drag and drop into this area</span>
+                      </button>
+                      {isUploading && (
+                        <div className="mt-3">
+                          <div className="mb-1 flex justify-between text-xs text-gray-500">
+                            <span>Uploading</span>
+                            <span>{uploadProgress}%</span>
+                          </div>
+                          <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+                            <div
+                              className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                              style={{ width: `${uploadProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <p className="text-sm font-semibold text-gray-900">Added resources ({resources.length})</p>
+                      </div>
+                      {resources.length === 0 ? (
+                        <p className="py-4 text-center text-sm text-gray-500">No resources yet.</p>
+                      ) : (
+                        <div className="max-h-36 space-y-2 overflow-y-auto pr-1">
+                          {resources.map((resource) => (
+                            <div
+                              key={resource.id}
+                              className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold text-gray-900">{resource.title}</p>
+                                <p className="text-xs text-gray-500">
+                                  {resource.type} · {resource.source === 'upload' ? 'File' : 'Link'}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeResource(resource.id)}
+                                className="shrink-0 rounded-lg p-1.5 text-red-500 hover:bg-red-50"
+                                aria-label="Remove resource"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="shrink-0 border-t border-gray-100 bg-white px-6 py-4 sm:px-8">
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+                  <div>
+                    {step > 1 && (
+                      <Button type="button" variant="outline" onClick={() => setStep((current) => current - 1)}>
+                        <ArrowLeft className="h-4 w-4" /> Back
+                      </Button>
                     )}
                   </div>
-                </div>
-              )}
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-                <div className="flex gap-3">
-                  {step > 1 && (
-                    <Button type="button" variant="outline" onClick={() => setStep((current) => current - 1)}>
-                      <ArrowLeft className="w-4 h-4" /> Back
-                    </Button>
-                  )}
-                </div>
-                <div className="flex gap-3">
-                  {step < 3 ? (
-                    <Button type="button" className="bg-black text-white" onClick={() => setStep((current) => Math.min(3, current + 1))} disabled={step === 1 && !hasStepOneReady}>
-                      Continue
-                      <ArrowRight className="w-4 h-4" />
-                    </Button>
-                  ) : (
-                    <Button type="button" className="bg-black text-white" onClick={handleSaveLesson} disabled={isSaving}>
-                      {isSaving ? 'Saving lesson…' : 'Create lesson'}
-                    </Button>
-                  )}
+                  <div className="flex gap-3 sm:justify-end">
+                    {step < 3 ? (
+                      <Button
+                        type="button"
+                        className="bg-black text-white"
+                        onClick={() => setStep((current) => Math.min(3, current + 1))}
+                        disabled={step === 1 && !hasStepOneReady}
+                      >
+                        Continue
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <Button type="button" className="bg-black text-white" onClick={handleSaveLesson} disabled={isSaving}>
+                        {isSaving ? 'Saving lesson…' : 'Create lesson'}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

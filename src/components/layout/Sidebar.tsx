@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { 
-  Home, Users, User, BookOpen, Layers, Edit3, CalendarCheck, 
+  Home, Users, User, BookOpen, Edit3, CalendarCheck, 
   DollarSign, BarChart2, Bell, Award, ShieldCheck, 
   LayoutTemplate, Settings, Activity, Search, LogOut,
   ChevronDown, ChevronRight
@@ -72,17 +72,6 @@ const MENU_DATA: MenuGroup[] = [
       { id: 'courses/materials', label: 'Materials' },
       { id: 'courses/enrollment', label: 'Enrollment' },
       { id: 'courses/analytics', label: 'Analytics' },
-    ]
-  },
-  {
-    id: 'content', label: 'Course Content', icon: Layers, roles: ['owner', 'teacher'],
-    items: [
-      { id: 'content/syllabus', label: 'Syllabus' },
-      { id: 'content/modules', label: 'Modules' },
-      { id: 'content/lessons', label: 'Lessons' },
-      { id: 'content/video', label: 'Video Lessons' },
-      { id: 'content/resources', label: 'Documents & Resources' },
-      { id: 'content/upload', label: 'Upload Materials' },
     ]
   },
   {

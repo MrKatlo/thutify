@@ -21,6 +21,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react';
 import { useAuth } from '../hooks/useAuth';
 import { Button, Card } from './ui/Card';
+import { PageSkeleton } from './ui/PageSkeleton';
 import type {
   Course,
   InvitationDeliveryPreview,
@@ -186,7 +187,7 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 }
 
 export function TeacherManagement({ activeTab }: TeacherManagementProps) {
-  const { institutionId, institution, canManageInstitution } = useAuth();
+  const { institutionId, institution, canManageInstitution, loading: authLoading } = useAuth();
   const canManageTeachers = Boolean(canManageInstitution);
   const viewCopy = TAB_COPY[activeTab] || TAB_COPY['teachers/all'];
 
@@ -1428,6 +1429,10 @@ export function TeacherManagement({ activeTab }: TeacherManagementProps) {
     if (activeTab === 'teachers/attendance') return renderAttendanceWorkspace();
     return renderAllTeachers();
   };
+
+  if (authLoading) {
+    return <PageSkeleton cards={4} />;
+  }
 
   if (!canManageTeachers) {
     return (
