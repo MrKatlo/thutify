@@ -59,7 +59,7 @@ function formatAuditActivity(entry: AuditLogEntry): ActivityItem {
 
 export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardProps) {
   const { profile, canManageInstitution, isTeacher, institutionId, institution } = useAuth();
-  const currency = institution?.currency || 'USD';
+  const currency = institution?.currency || 'BWP';
 
   // Owner & Teacher stats
   const [stats, setStats] = useState({

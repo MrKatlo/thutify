@@ -77,7 +77,7 @@ function StudentBalanceTable({
   students,
   loading,
   emptyMessage,
-  currency = 'USD',
+  currency = 'BWP',
 }: {
   students: StudentSummary[];
   loading: boolean;
@@ -148,7 +148,7 @@ function StudentBalanceTable({
 
 export function Financials({ initialTab = 'payments' }: FinancialsProps) {
   const { profile, canManageInstitution, institutionId, institution } = useAuth();
-  const currency = institution?.currency || 'USD';
+  const currency = institution?.currency || 'BWP';
   const toast = useToast();
   const activeTab = resolveFinanceTab(initialTab);
 
@@ -222,15 +222,45 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
 
       if (!isEditing || !selectedPayment) {
         await cfApi.createPayment(institutionId, payload);
+      } else {
+        await cfApi.updatePayment(selectedPayment.id, payload);
       }
 
       setShowForm(false);
+      setIsEditing(false);
+      setSelectedPayment(null);
       setFormData({ studentId: '', courseId: '', amountPaid: '', totalFee: '', method: 'Transfer', reference: '' });
       void fetchData();
-      toast.success('Payment recorded successfully!');
+      toast.success(isEditing ? 'Payment updated successfully!' : 'Payment recorded successfully!');
     } catch (err) {
       console.error('Save payment failed:', err);
       toast.error('Unable to record payment.');
+    }
+  };
+
+  const handleEditPayment = (p: any) => {
+    setSelectedPayment(p);
+    setIsEditing(true);
+    setFormData({
+      studentId: p.student_id || p.studentId,
+      courseId: p.course_id || p.courseId || '',
+      amountPaid: String(p.amount_paid || p.amountPaid || 0),
+      totalFee: String(p.total_fee || p.totalFee || 0),
+      method: p.payment_method || p.paymentMethod || 'Transfer',
+      reference: p.reference_number || p.referenceNumber || '',
+    });
+    setShowForm(true);
+  };
+
+  const handleDeletePayment = async (p: any) => {
+    if (!confirm('Are you sure you want to delete this payment record?')) return;
+    try {
+      await cfApi.deletePayment(p.id);
+      toast.success('Payment record deleted.');
+      void fetchData();
+    } catch (err) {
+      console.error('Delete payment failed:', err);
+      toast.error('Failed to delete payment record.');
     }
   };
 
@@ -346,11 +376,12 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
 
         <PaymentList
           payments={payments}
-          onEdit={() => {}}
-          onDelete={() => {}}
+          onEdit={handleEditPayment}
+          onDelete={handleDeletePayment}
           onReceipt={handleReceipt}
           loading={loading}
           readonly
+          currency={currency}
         />
       </div>
     );
@@ -378,9 +409,10 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
             <PaymentList
               payments={payments}
               loading={loading}
-              onEdit={() => {}}
-              onDelete={() => {}}
+              onEdit={handleEditPayment}
+              onDelete={handleDeletePayment}
               onReceipt={handleReceipt}
+              currency={currency}
             />
           </div>
         );
@@ -389,9 +421,10 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
         <PaymentList
           payments={payments}
           loading={loading}
-          onEdit={() => {}}
-          onDelete={() => {}}
+          onEdit={handleEditPayment}
+          onDelete={handleDeletePayment}
           onReceipt={handleReceipt}
+          currency={currency}
         />
       );
     }
@@ -417,10 +450,11 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
         <PaymentList
           payments={payments}
           loading={loading}
-          onEdit={() => {}}
-          onDelete={() => {}}
+          onEdit={handleEditPayment}
+          onDelete={handleDeletePayment}
           onReceipt={handleReceipt}
           readonly
+          currency={currency}
         />
       );
     }
@@ -452,9 +486,10 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
           <PaymentList
             payments={payments}
             loading={loading}
-            onEdit={() => {}}
-            onDelete={() => {}}
+            onEdit={handleEditPayment}
+            onDelete={handleDeletePayment}
             onReceipt={handleReceipt}
+            currency={currency}
           />
         </div>
       );
@@ -605,7 +640,7 @@ export function Financials({ initialTab = 'payments' }: FinancialsProps) {
                     />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs font-bold uppercase text-gray-700">Total Fee ($)</label>
+                    <label className="mb-1.5 block text-xs font-bold uppercase text-gray-700">Total Fee ({currency})</label>
                     <input
                       required
                       type="number"

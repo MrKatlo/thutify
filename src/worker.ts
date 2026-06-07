@@ -7,6 +7,7 @@ import type {
   AssignmentInput,
   CourseInput,
   InstitutionInput,
+  InstitutionType,
   LessonInput,
   LiveClassInput,
   ModuleInput,
@@ -449,7 +450,7 @@ function mapInstitution(row: Row) {
     ownerUserId: String(row.owner_user_id || ''),
     status: String(row.status || 'active'),
     timezone: String(row.timezone || 'UTC'),
-    currency: String(row.currency || 'USD'),
+    currency: String(row.currency || 'BWP'),
     locale: String(row.locale || 'en'),
     custom_domain: (row.custom_domain as string | null) || null,
     customDomain: (row.custom_domain as string | null) || null,
@@ -818,6 +819,30 @@ async function updateStudentProfileFields(
     `UPDATE student_profiles SET ${setClause} WHERE institution_id = ? AND user_id = ?`,
     [...entries.map(([, value]) => value), institutionId, userId],
   );
+}
+
+async function recalculateStudentBalance(db: D1Database, institutionId: string, studentId: string) {
+  const [payments, invoices, refunds] = await Promise.all([
+    dbAll<{ amount_paid: number }>(db, 'SELECT amount_paid FROM payments WHERE institution_id = ? AND student_id = ?', [institutionId, studentId]),
+    dbAll<{ amount: number }>(db, 'SELECT amount FROM invoices WHERE institution_id = ? AND student_id = ? AND status != "void"', [institutionId, studentId]),
+    dbAll<{ amount: number }>(db, 'SELECT amount FROM refunds WHERE institution_id = ? AND student_id = ? AND status = "processed"', [institutionId, studentId]),
+  ]);
+
+  const totalPaid = payments.reduce((sum, p) => sum + toNumber(p.amount_paid, 0), 0);
+  const totalInvoiced = invoices.reduce((sum, i) => sum + toNumber(i.amount, 0), 0);
+  const totalRefunded = refunds.reduce((sum, r) => sum + toNumber(r.amount, 0), 0);
+
+  const netPaid = totalPaid - totalRefunded;
+  const balance = Math.max(0, totalInvoiced - netPaid);
+  const status = balance <= 0 && totalInvoiced > 0 ? 'paid' : netPaid > 0 ? 'partial' : 'unpaid';
+
+  await updateStudentProfileFields(db, institutionId, studentId, {
+    balance,
+    amount_paid: netPaid,
+    total_fee: totalInvoiced,
+    payment_status: status,
+    updated_at: nowIso(),
+  });
 }
 
 async function updateInstitutionUserFields(
@@ -3001,7 +3026,7 @@ export function createApp(options: CreateAppOptions = {}) {
         context.env.DB,
         `INSERT INTO institutions
          (id, name, slug, logo_url, primary_color, country, institution_type, owner_user_id, status, timezone, currency, locale, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 'UTC', 'USD', 'en', ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 'UTC', 'BWP', 'en', ?, ?)`,
         [
           institutionId,
           body.institution.name,
@@ -3525,7 +3550,7 @@ export function createApp(options: CreateAppOptions = {}) {
       context.env.DB,
       `INSERT INTO institutions
        (id, name, slug, logo_url, primary_color, country, institution_type, owner_user_id, status, timezone, currency, locale, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 'UTC', 'USD', 'en', ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 'UTC', 'BWP', 'en', ?, ?)`,
       [
         institutionId,
         body.name,
@@ -4032,6 +4057,9 @@ export function createApp(options: CreateAppOptions = {}) {
     const body = await parseRequestBody<
       Partial<InstitutionInput> & {
         status?: string;
+        logo_url?: string;
+        primary_color?: string;
+        institution_type?: InstitutionType;
         email_sender?: string;
         emailSender?: string;
         payment_gateway?: string;
@@ -6025,12 +6053,14 @@ export function createApp(options: CreateAppOptions = {}) {
     const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
     if (access.error) return access.error;
     const body = await parseRequestBody<PaymentInput & Row>(context.req.raw);
+    const institution = await getInstitutionById(context.env.DB, institutionId);
+    const currency = institution?.currency || 'BWP';
     const paymentId = newId();
     await dbRun(
       context.env.DB,
       `INSERT INTO payments
        (id, institution_id, student_id, course_id, amount_paid, total_fee, balance, currency, payment_method, reference_number, status, payment_date, notes, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         paymentId,
         institutionId,
@@ -6039,6 +6069,7 @@ export function createApp(options: CreateAppOptions = {}) {
         toNumber(body.amountPaid ?? body.amount_paid, 0),
         toNumber(body.totalFee ?? body.total_fee, 0),
         Math.max(0, toNumber(body.totalFee ?? body.total_fee, 0) - toNumber(body.amountPaid ?? body.amount_paid, 0)),
+        currency,
         body.paymentMethod || body.payment_method || 'manual',
         body.referenceNumber || body.reference_number || '',
         body.status ||
@@ -6050,7 +6081,63 @@ export function createApp(options: CreateAppOptions = {}) {
         nowIso(),
       ],
     );
+    await recalculateStudentBalance(context.env.DB, institutionId, String(body.studentId || body.student_id));
     return context.json((await listPaymentsForInstitution(context.env.DB, institutionId)).find((payment) => payment.id === paymentId) || null, 201);
+  });
+
+  app.delete('/api/payments/:id', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const paymentId = context.req.param('id');
+    const payment = await getPaymentRow(context.env.DB, paymentId);
+    if (!payment) return context.json({ error: 'Payment not found' }, 404);
+    
+    const institutionId = String(payment.institution_id || '');
+    const studentId = String(payment.student_id || '');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+
+    await dbRun(context.env.DB, 'DELETE FROM payments WHERE id = ?', [paymentId]);
+    await recalculateStudentBalance(context.env.DB, institutionId, studentId);
+    return context.json({ success: true });
+  });
+
+  app.patch('/api/payments/:id', async (context) => {
+    const verified = context.get('user');
+    const platformUser = context.get('platformUser');
+    const paymentId = context.req.param('id');
+    const payment = await getPaymentRow(context.env.DB, paymentId);
+    if (!payment) return context.json({ error: 'Payment not found' }, 404);
+    
+    const institutionId = String(payment.institution_id || '');
+    const studentId = String(payment.student_id || '');
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin']);
+    if (access.error) return access.error;
+
+    const body = await parseRequestBody<PaymentInput & Row>(context.req.raw);
+    const amountPaid = toNumber(body.amountPaid ?? body.amount_paid, toNumber(payment.amount_paid));
+    const totalFee = toNumber(body.totalFee ?? body.total_fee, toNumber(payment.total_fee));
+    const balance = Math.max(0, totalFee - amountPaid);
+    const status = body.status || (amountPaid >= totalFee ? 'paid' : 'partial');
+
+    await dbRun(
+      context.env.DB,
+      `UPDATE payments
+       SET amount_paid = ?, total_fee = ?, balance = ?, payment_method = ?, reference_number = ?, status = ?, notes = ?
+       WHERE id = ?`,
+      [
+        amountPaid,
+        totalFee,
+        balance,
+        body.paymentMethod || body.payment_method || payment.payment_method,
+        body.referenceNumber || body.reference_number || payment.reference_number,
+        status,
+        body.notes || payment.notes,
+        paymentId,
+      ],
+    );
+    await recalculateStudentBalance(context.env.DB, institutionId, studentId);
+    return context.json((await listPaymentsForInstitution(context.env.DB, institutionId)).find((p) => p.id === paymentId) || null);
   });
 
   app.get('/api/institutions/:id/invoices', async (context) => {
@@ -6060,24 +6147,29 @@ export function createApp(options: CreateAppOptions = {}) {
   app.post('/api/institutions/:id/invoices', async (context) => {
     const body = await parseRequestBody<{ studentId?: string; student_id?: string; courseId?: string; course_id?: string; amount?: number; dueDate?: string; due_date?: string }>(context.req.raw);
     const institutionId = context.req.param('id');
+    const institution = await getInstitutionById(context.env.DB, institutionId);
+    const currency = institution?.currency || 'BWP';
+    const studentId = String(body.studentId || body.student_id || '');
     const invoiceId = newId();
     const invoiceNumber = `INV-${Date.now()}`;
     await dbRun(
       context.env.DB,
       `INSERT INTO invoices
        (id, institution_id, student_id, course_id, invoice_number, amount, currency, due_date, status, issued_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'USD', ?, 'open', ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
       [
         invoiceId,
         institutionId,
-        body.studentId || body.student_id,
+        studentId,
         body.courseId || body.course_id || null,
         invoiceNumber,
         toNumber(body.amount, 0),
+        currency,
         body.dueDate || body.due_date || null,
         nowIso(),
       ],
     );
+    await recalculateStudentBalance(context.env.DB, institutionId, studentId);
     return context.json((await listInvoicesForInstitution(context.env.DB, institutionId)).find((invoice) => invoice.id === invoiceId) || null, 201);
   });
 
@@ -6108,19 +6200,27 @@ export function createApp(options: CreateAppOptions = {}) {
         nowIso(),
       ],
     );
+    // Don't recalculate yet, only when approved/processed
     return context.json((await listRefundsForInstitution(context.env.DB, context.req.param('id'))).find((refund) => refund.id === refundId) || null, 201);
   });
 
   app.patch('/api/refunds/:id', async (context) => {
     const body = await parseRequestBody<{ status?: string }>(context.req.raw);
+    const refundId = context.req.param('id');
+    const refund = await dbFirst<Row>(context.env.DB, 'SELECT * FROM refunds WHERE id = ? LIMIT 1', [refundId]);
+    if (!refund) return context.json({ error: 'Refund not found' }, 404);
+
     await dbRun(context.env.DB, 'UPDATE refunds SET status = ?, processed_at = ? WHERE id = ?', [
       body.status || 'processed',
       nowIso(),
-      context.req.param('id'),
+      refundId,
     ]);
-    const refund = await dbFirst<Row>(context.env.DB, 'SELECT * FROM refunds WHERE id = ? LIMIT 1', [context.req.param('id')]);
-    return context.json(refund);
-  });
+
+    if ((body.status || 'processed') === 'processed') {
+       await recalculateStudentBalance(context.env.DB, String(refund.institution_id), String(refund.student_id));
+     }
+     return context.json(await dbFirst<Row>(context.env.DB, 'SELECT * FROM refunds WHERE id = ? LIMIT 1', [refundId]));
+   });
 
   app.get('/api/courses/:courseId/live-classes', async (context) => {
     const course = await getCourseRow(context.env.DB, context.req.param('courseId'));

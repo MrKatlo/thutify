@@ -47,7 +47,7 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
   const [emailSender, setEmailSender] = useState('no-reply@learnflow.com');
   const [language, setLanguage] = useState('English');
   const [timezoneValue, setTimezoneValue] = useState('UTC');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('BWP');
   const [gateway, setGateway] = useState('Stripe');
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [smsNotifications, setSmsNotifications] = useState(false);
@@ -83,7 +83,7 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
       setEmailSender(inst.emailSender || inst.email_sender || 'no-reply@learnflow.com');
       setLanguage(inst.language || inst.locale || 'English');
       setTimezoneValue(inst.timezone || 'UTC');
-      setCurrency(inst.currency || 'USD');
+      setCurrency(inst.currency || 'BWP');
       setGateway(inst.paymentGateway || inst.payment_gateway || 'Stripe');
       setEmailNotifications(inst.emailNotifications ?? inst.email_notifications ?? true);
       setSmsNotifications(inst.smsNotifications ?? inst.sms_notifications ?? false);
@@ -414,7 +414,7 @@ export function SystemSettings({ initialActiveTab }: SystemSettingsProps) {
                     onChange={(e) => setCurrency(e.target.value)}
                     className="w-full max-w-xs px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black text-sm"
                   >
-                    {['USD', 'EUR', 'GBP', 'AUD', 'NGN'].map(currencyOption => (
+                    {['BWP', 'USD', 'EUR', 'GBP', 'AUD', 'NGN'].map(currencyOption => (
                       <option key={currencyOption} value={currencyOption}>{currencyOption}</option>
                     ))}
                   </select>

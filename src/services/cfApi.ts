@@ -980,6 +980,14 @@ export async function listPayments(institutionId: string, studentId?: string): P
   });
 }
 
+export async function deletePayment(paymentId: string): Promise<void> {
+  await apiRequest('DELETE', `/payments/${paymentId}`);
+}
+
+export async function updatePayment(paymentId: string, data: Partial<PaymentInput>): Promise<PaymentRecord> {
+  return apiRequest('PATCH', `/payments/${paymentId}`, { body: data });
+}
+
 export async function getInvoices(institutionId: string): Promise<Invoice[]> {
   return apiRequest('GET', `/institutions/${institutionId}/invoices`);
 }

@@ -1,4 +1,5 @@
 import { Printer, Edit2, Trash2 } from 'lucide-react';
+import { formatMoney } from '../../lib/currency';
 
 interface PaymentListProps {
   payments: any[];
@@ -7,9 +8,10 @@ interface PaymentListProps {
   onReceipt: (p: any) => void;
   loading: boolean;
   readonly?: boolean;
+  currency?: string;
 }
 
-export function PaymentList({ payments, onEdit, onDelete, onReceipt, loading, readonly = false }: PaymentListProps) {
+export function PaymentList({ payments, onEdit, onDelete, onReceipt, loading, readonly = false, currency = 'BWP' }: PaymentListProps) {
   return (
     <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm mt-6">
       <div className="overflow-x-auto">
@@ -37,11 +39,11 @@ export function PaymentList({ payments, onEdit, onDelete, onReceipt, loading, re
                     <p className="text-xs text-gray-500">{p.course_name || p.courseName}</p>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="font-bold text-gray-900">${(p.amount_paid || p.amountPaid || 0).toLocaleString()}</p>
-                    <p className="text-[10px] text-gray-400">Total: ${(p.total_fee || p.totalFee || 0).toLocaleString()}</p>
+                    <p className="font-bold text-gray-900">{formatMoney(p.amount_paid || p.amountPaid || 0, currency)}</p>
+                    <p className="text-[10px] text-gray-400">Total: {formatMoney(p.total_fee || p.totalFee || 0, currency)}</p>
                   </td>
                   <td className="px-6 py-4 font-bold text-red-500">
-                    ${(p.balance || 0).toLocaleString()}
+                    {formatMoney(p.balance || 0, currency)}
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
