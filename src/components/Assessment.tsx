@@ -112,8 +112,20 @@ export function Assessment({ initialMode }: AssessmentProps) {
         setQuizzes(fetchedQuizzes.filter((q: any) => q.teacher_id === profile.uid));
         setSubmissions(fetchedSubmissions);
       } else {
-        setAssignments(fetchedAssign);
-        setQuizzes(fetchedQuizzes.filter((q: any) => q.status === 'published'));
+        // Filter for students based on their enrolled courses
+        const enrollments = await cfApi.listEnrollments(institutionId, undefined, profile.uid);
+        const enrolledCourseNames = new Set(
+          fetchedCourses
+            .filter((c: any) => enrollments.some((e: any) => e.course_id === c.id))
+            .map((c: any) => c.title)
+        );
+
+        setAssignments(fetchedAssign.filter((a: any) => 
+          enrolledCourseNames.has(a.course_name || a.courseName)
+        ));
+        setQuizzes(fetchedQuizzes.filter((q: any) => 
+          q.status === 'published' && enrolledCourseNames.has(q.course_name || q.courseName)
+        ));
         setSubmissions(fetchedSubmissions.filter((s: any) => s.student_id === profile.uid));
         setQuizAttempts(fetchedQuizAttempts);
       }

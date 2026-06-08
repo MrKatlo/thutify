@@ -49,6 +49,10 @@ export function CourseMaterials() {
         let list = await cfApi.listCourses(institutionId);
         if (isTeacher && !canManageInstitution && profile?.uid) {
           list = (list || []).filter((c: any) => (c.teacher_id || c.teacherId) === profile.uid);
+        } else if (profile?.role === 'student' && profile?.uid) {
+          const enrollments = await cfApi.listEnrollments(institutionId, undefined, profile.uid);
+          const enrolledIds = enrollments.map((e: any) => e.course_id);
+          list = (list || []).filter((c: any) => enrolledIds.includes(c.id));
         }
         setCourses(list || []);
         // Only set if not already set to avoid double trigger
@@ -59,7 +63,7 @@ export function CourseMaterials() {
         console.error('Fetch courses failed:', err);
       }
     })();
-  }, [institutionId, isTeacher, canManageInstitution, profile?.uid]);
+  }, [institutionId, isTeacher, canManageInstitution, profile?.uid, profile?.role]);
 
   useEffect(() => {
     if (!selectedCourseId || scope !== 'course') {
@@ -222,7 +226,7 @@ export function CourseMaterials() {
     );
   }
 
-  if (!canManageInstitution && !isTeacher) {
+  if (!canManageInstitution && !isTeacher && profile?.role !== 'student') {
     return (
       <div className="p-8 text-center text-sm text-gray-500">
         Open a course from Courses to view materials.
@@ -230,14 +234,18 @@ export function CourseMaterials() {
     );
   }
 
+  const canUpload = canManageInstitution || isTeacher;
+
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-extrabold text-gray-900">Materials</h1>
-        <p className="text-sm text-gray-500 mt-1">Upload files and videos for a course or for everyone.</p>
+        <p className="text-sm text-gray-500 mt-1">
+          {canUpload ? 'Upload files and videos for a course or for everyone.' : 'View files and videos for your courses.'}
+        </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div className={`grid gap-6 ${canUpload ? 'lg:grid-cols-[1fr_320px]' : 'grid-cols-1'}`}>
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <button
@@ -264,6 +272,7 @@ export function CourseMaterials() {
                 onChange={(e) => setSelectedCourseId(e.target.value)}
                 className="px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white"
               >
+                {courses.length === 0 && <option value="">No courses</option>}
                 {courses.map((c) => (
                   <option key={c.id} value={c.id}>{c.title}</option>
                 ))}
@@ -320,9 +329,11 @@ export function CourseMaterials() {
                           Open
                         </a>
                       )}
-                      <button type="button" onClick={() => setMaterialToDelete(m)} className="text-xs text-red-500">
-                        Delete
-                      </button>
+                      {canUpload && (
+                        <button type="button" onClick={() => setMaterialToDelete(m)} className="text-xs text-red-500">
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -331,93 +342,95 @@ export function CourseMaterials() {
           </Card>
         </div>
 
-        <Card className="p-4 h-fit space-y-3">
-          <h3 className="font-bold text-sm">Upload</h3>
-          <form onSubmit={handleUpload} className="space-y-3">
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Title"
-              className="w-full px-3 py-2 border border-gray-100 rounded-xl text-sm"
-            />
+        {canUpload && (
+          <Card className="p-4 h-fit space-y-3">
+            <h3 className="font-bold text-sm">Upload</h3>
+            <form onSubmit={handleUpload} className="space-y-3">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Title"
+                className="w-full px-3 py-2 border border-gray-100 rounded-xl text-sm"
+              />
 
-            {scope === 'course' && modules.length > 0 && (
+              {scope === 'course' && modules.length > 0 && (
+                <select
+                  value={selectedModuleId}
+                  onChange={(e) => setSelectedModuleId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-100 rounded-xl text-sm bg-white"
+                >
+                  <option value="">Whole course</option>
+                  {modules.map((m) => (
+                    <option key={m.id} value={m.id}>{m.title}</option>
+                  ))}
+                </select>
+              )}
+
               <select
-                value={selectedModuleId}
-                onChange={(e) => setSelectedModuleId(e.target.value)}
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-100 rounded-xl text-sm bg-white"
               >
-                <option value="">Whole course</option>
-                {modules.map((m) => (
-                  <option key={m.id} value={m.id}>{m.title}</option>
+                {MATERIAL_CATEGORIES.map((c) => (
+                  <option key={c.key} value={c.key}>{c.label}</option>
                 ))}
               </select>
-            )}
 
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-100 rounded-xl text-sm bg-white"
-            >
-              {MATERIAL_CATEGORIES.map((c) => (
-                <option key={c.key} value={c.key}>{c.label}</option>
-              ))}
-            </select>
-
-            <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Upload a file</p>
-              <input
-                id="material-file-input"
-                type="file"
-                onChange={handleFileChange}
-                className="sr-only"
-              />
-              <label
-                htmlFor="material-file-input"
-                className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center transition hover:border-black hover:bg-white"
-              >
-                <Upload className="h-7 w-7 text-gray-700" />
-                <span className="text-sm font-bold text-gray-900">
-                  {file ? file.name : 'Browse files'}
-                </span>
-                <span className="text-xs text-gray-500">PDF, video, slides, documents</span>
-              </label>
-            </div>
-
-            <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Or paste a link</p>
-              <input
-                value={externalLink}
-                onChange={(e) => {
-                  setExternalLink(e.target.value);
-                  if (e.target.value) setSelectedCategory('Links');
-                }}
-                placeholder="https://example.com/resource"
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black"
-              />
-            </div>
-
-            {uploading && file && (
               <div>
-                <div className="mb-1 flex justify-between text-xs text-gray-500">
-                  <span>Uploading</span>
-                  <span>{uploadProgress}%</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-gray-200">
-                  <div
-                    className="h-full rounded-full bg-black transition-all duration-300"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
+                <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Upload a file</p>
+                <input
+                  id="material-file-input"
+                  type="file"
+                  onChange={handleFileChange}
+                  className="sr-only"
+                />
+                <label
+                  htmlFor="material-file-input"
+                  className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center transition hover:border-black hover:bg-white"
+                >
+                  <Upload className="h-7 w-7 text-gray-700" />
+                  <span className="text-sm font-bold text-gray-900">
+                    {file ? file.name : 'Browse files'}
+                  </span>
+                  <span className="text-xs text-gray-500">PDF, video, slides, documents</span>
+                </label>
               </div>
-            )}
 
-            <Button type="submit" className="w-full gap-2 bg-black text-white" disabled={uploading}>
-              <Upload className="h-4 w-4" />
-              {uploading ? `Uploading… ${uploadProgress}%` : 'Save to Materials'}
-            </Button>
-          </form>
-        </Card>
+              <div>
+                <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Or paste a link</p>
+                <input
+                  value={externalLink}
+                  onChange={(e) => {
+                    setExternalLink(e.target.value);
+                    if (e.target.value) setSelectedCategory('Links');
+                  }}
+                  placeholder="https://example.com/resource"
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-black"
+                />
+              </div>
+
+              {uploading && file && (
+                <div>
+                  <div className="mb-1 flex justify-between text-xs text-gray-500">
+                    <span>Uploading</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+                    <div
+                      className="h-full rounded-full bg-black transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <Button type="submit" className="w-full gap-2 bg-black text-white" disabled={uploading}>
+                <Upload className="h-4 w-4" />
+                {uploading ? `Uploading… ${uploadProgress}%` : 'Save to Materials'}
+              </Button>
+            </form>
+          </Card>
+        )}
       </div>
 
       <AnimatePresence>

@@ -54,6 +54,11 @@ export function CourseDetail({ course, onBack, onUpdate, role }: CourseDetailPro
         return { ...m, lessons };
       }));
       setModules(modulesWithLessons);
+      
+      // Auto-expand first module for students if it has lessons
+      if (role === 'student' && modulesWithLessons.length > 0 && expandedModules.length === 0) {
+        setExpandedModules([modulesWithLessons[0].id]);
+      }
     } catch (err) {
       console.error("Fetch modules failed:", err);
     } finally {
