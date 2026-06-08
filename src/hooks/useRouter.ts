@@ -24,6 +24,7 @@ export interface RouteInfo {
   params: {
     institutionSlug?: string;
     role?: string;
+    tab?: string;
   };
 }
 

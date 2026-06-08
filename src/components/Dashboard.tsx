@@ -448,8 +448,32 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
     );
   }
 
-  if (loading && !canManageInstitution && !isTeacher && profile?.role === 'student') {
-    return <PageSkeleton cards={4} />;
+  if (loading) {
+    return (
+      <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-8">
+        <div className="space-y-2">
+          <div className="h-10 w-64 bg-gray-100 animate-pulse rounded-2xl" />
+          <div className="h-4 w-48 bg-gray-100 animate-pulse rounded-lg" />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-32 rounded-3xl bg-gray-100 animate-pulse border border-gray-50" />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-8">
+            <div className="h-64 rounded-3xl bg-gray-100 animate-pulse" />
+            <div className="h-96 rounded-3xl bg-gray-100 animate-pulse" />
+          </div>
+          <div className="space-y-8">
+            <div className="h-48 rounded-3xl bg-gray-100 animate-pulse" />
+            <div className="h-48 rounded-3xl bg-gray-100 animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -466,11 +490,7 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-10">
-        {loading ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-28 rounded-3xl bg-gray-100 animate-pulse" />
-          ))
-        ) : statsList.map((stat, i) => (
+        {statsList.map((stat, i) => (
           <motion.div
             key={stat.label}
             initial={{ opacity: 0, y: 20 }}

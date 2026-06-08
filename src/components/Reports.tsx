@@ -15,8 +15,21 @@ const VIEW_META: Record<string, { title: string; description: string }> = {
   attendance: { title: 'Attendance Reports', description: 'Institution-wide attendance rate.' },
   teacher: { title: 'Teacher Reports', description: 'Active teaching staff overview.' },
   performance: { title: 'Performance Analytics', description: 'Combined institutional health indicators.' },
+  assignments: { title: 'Assignment Reports', description: 'Completion and grading rates across all courses.' },
   export: { title: 'Export Reports', description: 'Download or print report summaries.' },
 };
+
+const REPORT_TABS = [
+  { id: 'performance', label: 'Overview' },
+  { id: 'financial', label: 'Financial' },
+  { id: 'revenue', label: 'Revenue' },
+  { id: 'student', label: 'Students' },
+  { id: 'course', label: 'Courses' },
+  { id: 'attendance', label: 'Attendance' },
+  { id: 'assignments', label: 'Assignments' },
+  { id: 'teacher', label: 'Teachers' },
+  { id: 'export', label: 'Export' },
+];
 
 interface ReportsProps {
   initialView?: string;
@@ -24,10 +37,16 @@ interface ReportsProps {
 
 export function Reports({ initialView = 'performance' }: ReportsProps) {
   const { institutionId, institution } = useAuth();
+  const [activeView, setActiveView] = useState(initialView);
   const currency = institution?.currency || 'BWP';
   const [loading, setLoading] = useState(true);
   const [reportData, setReportData] = useState<any>(null);
   const [teacherCount, setTeacherCount] = useState(0);
+  const [assignmentStats, setAssignmentStats] = useState({ total: 0, graded: 0 });
+
+  useEffect(() => {
+    setActiveView(initialView);
+  }, [initialView]);
 
   useEffect(() => {
     fetchData();
@@ -37,11 +56,13 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
     if (!institutionId) return;
     setLoading(true);
     try {
-      const [finReport, enrollReport, attReport, teachers] = await Promise.all([
+      const [finReport, enrollReport, attReport, teachers, allAssignments, allSubmissions] = await Promise.all([
         cfApi.getFinancialReport(institutionId),
         cfApi.getEnrollmentReport(institutionId),
         cfApi.getAttendanceReport(institutionId),
         cfApi.listTeachers(institutionId, { pagination: { limit: 1, offset: 0 } }),
+        cfApi.listAssignments(institutionId),
+        cfApi.listSubmissions(institutionId),
       ]);
 
       setReportData({
@@ -50,6 +71,12 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
         attendance: attReport,
       });
       setTeacherCount(teachers.total ?? teachers.results?.length ?? 0);
+      
+      const graded = allSubmissions.filter((s: any) => s.status === 'graded' || s.grade != null).length;
+      setAssignmentStats({
+        total: allAssignments.length,
+        graded: allSubmissions.length > 0 ? Math.round((graded / allSubmissions.length) * 100) : 0
+      });
     } catch (error) {
       console.error('Fetch reports failed:', error);
     } finally {
@@ -57,7 +84,7 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
     }
   };
 
-  const viewMeta = VIEW_META[initialView] || VIEW_META.performance;
+  const viewMeta = VIEW_META[activeView] || VIEW_META.performance;
   const financial = reportData?.financial || { totalRevenue: 0, outstanding: 0, monthly: [] };
   const enrollment = reportData?.enrollment || { totalStudents: 0, distribution: [] };
   const attendance = reportData?.attendance || { rate: 0 };
@@ -95,15 +122,16 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
     { label: 'Total Enrolled', value: `${enrollment.totalStudents} Students`, icon: Users, color: 'text-blue-600 bg-blue-50', views: ['student', 'performance', 'export'] },
     { label: 'Balance Owed', value: formatMoney(Number(financial.outstanding || 0), currency), icon: Clock, color: 'text-red-600 bg-red-50', views: ['financial', 'performance', 'export'] },
     { label: 'Attendance', value: `${attendance.rate}%`, icon: CheckSquare, color: 'text-purple-600 bg-purple-50', views: ['attendance', 'performance', 'export'] },
+    { label: 'Assignments', value: `${assignmentStats.total}`, icon: BookOpen, color: 'text-indigo-600 bg-indigo-50', views: ['assignments', 'performance', 'export'] },
     { label: 'Teachers', value: `${teacherCount}`, icon: BarChart2, color: 'text-amber-600 bg-amber-50', views: ['teacher', 'performance', 'export'] },
   ];
 
-  const visibleCards = initialView === 'export'
+  const visibleCards = activeView === 'export'
     ? summaryCards
-    : summaryCards.filter((card) => card.views.includes(initialView));
+    : summaryCards.filter((card) => card.views.includes(activeView));
 
-  const showRevenueChart = ['financial', 'revenue', 'performance'].includes(initialView);
-  const showEnrollmentChart = ['student', 'course', 'performance'].includes(initialView);
+  const showRevenueChart = ['financial', 'revenue', 'performance'].includes(activeView);
+  const showEnrollmentChart = ['student', 'course', 'performance'].includes(activeView);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
@@ -113,7 +141,7 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
           <p className="text-gray-500 mt-1 font-medium text-sm">{viewMeta.description}</p>
         </div>
         <div className="flex gap-2 print:hidden">
-          {initialView === 'export' && (
+          {activeView === 'export' && (
             <Button onClick={exportCsv} variant="outline" className="gap-2">
               <Download className="w-4 h-4" /> Export CSV
             </Button>
@@ -124,7 +152,23 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
         </div>
       </div>
 
-      {initialView === 'export' && (
+      <div className="flex items-center gap-1 overflow-x-auto pb-2 print:hidden scrollbar-hide">
+        {REPORT_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveView(tab.id)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+              activeView === tab.id
+                ? 'bg-black text-white shadow-lg shadow-black/10'
+                : 'bg-white text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeView === 'export' && (
         <Card title="Available Exports" description="Choose a format to download institutional metrics.">
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <button onClick={exportCsv} className="p-4 border border-gray-100 rounded-2xl text-left hover:border-black transition-colors">
@@ -205,7 +249,7 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
             </Card>
           )}
 
-          {initialView === 'teacher' && (
+          {activeView === 'teacher' && (
             <Card title="Teaching Staff" description="Registered instructors on the platform.">
               <div className="mt-6 flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
                 <BookOpen className="w-8 h-8 text-gray-400" />
@@ -216,10 +260,22 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
               </div>
             </Card>
           )}
+
+          {activeView === 'assignments' && (
+            <Card title="Grading Progress" description="Share of submissions marked.">
+              <div className="mt-6 flex items-center gap-4">
+                <TrendingUp className="w-10 h-10 text-indigo-600" />
+                <div>
+                  <p className="text-4xl font-black">{assignmentStats.graded}%</p>
+                  <p className="text-sm text-gray-500">Submissions Graded</p>
+                </div>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 
-      {initialView === 'attendance' && (
+      {activeView === 'attendance' && (
         <Card title="Attendance Rate" description="Aggregate presence across all recorded sessions.">
           <div className="mt-6 flex items-center gap-4">
             <TrendingUp className="w-10 h-10 text-purple-600" />
@@ -233,3 +289,4 @@ export function Reports({ initialView = 'performance' }: ReportsProps) {
     </div>
   );
 }
+

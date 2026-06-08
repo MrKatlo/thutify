@@ -22,7 +22,7 @@ const CATEGORY_ICONS: Record<string, typeof FileText> = {
 type Scope = 'general' | 'course';
 
 export function CourseMaterials() {
-  const { institutionId, canManageInstitution, isTeacher, profile } = useAuth();
+  const { institutionId, canManageInstitution, isTeacher, profile, loading: authLoading } = useAuth();
   const toast = useToast();
   const [courses, setCourses] = useState<any[]>([]);
   const [modules, setModules] = useState<any[]>([]);
@@ -200,6 +200,21 @@ export function CourseMaterials() {
       toast.error('Could not delete.');
     }
   };
+
+  if (authLoading || (loading && courses.length === 0)) {
+    return (
+      <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-6">
+        <div className="h-8 w-48 bg-gray-100 animate-pulse rounded-lg" />
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+          <div className="space-y-4">
+             <div className="h-10 w-full bg-gray-100 animate-pulse rounded-xl" />
+             <div className="h-64 w-full bg-gray-100 animate-pulse rounded-3xl" />
+          </div>
+          <div className="h-96 w-full bg-gray-100 animate-pulse rounded-3xl" />
+        </div>
+      </div>
+    );
+  }
 
   if (!canManageInstitution && !isTeacher) {
     return (

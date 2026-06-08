@@ -62,6 +62,27 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
+  // Sync activeTab with URL tab param
+  useEffect(() => {
+    if (route.name === 'institution-admin' && route.params.tab) {
+      setActiveTab(route.params.tab);
+    } else if (route.name === 'institution-admin' && !route.params.tab) {
+      setActiveTab('dashboard');
+    }
+  }, [route.params.tab, route.name]);
+
+  // Wrap setActiveTab to also navigate
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    if (route.name === 'institution-admin' && activeInstitution) {
+      const role = route.params.role || (isStudent ? 'student' : isTeacher ? 'teacher' : 'admin');
+      const newPath = `/${activeInstitution.slug}/${role}${tab === 'dashboard' ? '' : `/${tab}`}`;
+      if (window.location.pathname !== newPath) {
+        navigate(newPath);
+      }
+    }
+  };
+
   // Dynamic Institution Pre-loading based on URL Slug
   useEffect(() => {
     const slug = route.params.institutionSlug;
@@ -298,7 +319,7 @@ export default function App() {
           <div className="flex flex-1 min-h-0">
             <Sidebar 
               activeTab={activeTab} 
-              setActiveTab={setActiveTab} 
+              setActiveTab={handleTabChange} 
               isOpen={isSidebarOpen} 
               setIsOpen={setIsSidebarOpen}
               institution={activeInstitution} 
@@ -358,77 +379,77 @@ export default function App() {
                     {(() => {
                       if (activeTab.startsWith('dashboard')) return (
                         <Dashboard
-                          setActiveTab={setActiveTab}
+                          setActiveTab={handleTabChange}
                           initialView={activeTab === 'dashboard' ? 'overview' : activeTab.replace('dashboard/', '')}
                         />
                       );
                       if (activeTab === 'students' || activeTab.startsWith('students/')) return (canManageInstitution || isTeacher) ? (
                         <StudentManagement activeTab={activeTab === 'students' ? 'students/all' : activeTab} />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       if (activeTab === 'teachers' || activeTab.startsWith('teachers/')) return canManageInstitution ? (
                         <TeacherManagement activeTab={activeTab === 'teachers' ? 'teachers/all' : activeTab} />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       if (activeTab.startsWith('users/')) return canManageInstitution ? (
                         <UserManagement initialView={activeTab.replace('users/', '')} />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       if (activeTab === 'courses/materials') return <CourseMaterials key="courses-materials" />;
                       if (activeTab === 'courses/enrollment') return <CourseEnrollment key="courses-enrollment" />;
                       if (activeTab === 'courses/analytics') return <CourseAnalytics key="courses-analytics" />;
                       if (activeTab === 'courses/categories') return (
-                        <CourseCategories key="courses-categories" setActiveTab={setActiveTab} />
+                        <CourseCategories key="courses-categories" setActiveTab={handleTabChange} />
                       );
                       if (activeTab === 'courses' || activeTab.startsWith('courses/')) return (
-                        <CourseList key={activeTab} activeTab={activeTab} setActiveTab={setActiveTab} />
+                        <CourseList key={activeTab} activeTab={activeTab} setActiveTab={handleTabChange} />
                       );
                       if (activeTab === 'assessment' || activeTab.startsWith('assignments/')) return <Assessment initialMode={activeTab === 'assessment' ? 'assignments/all' : activeTab} />;
                       if (activeTab.startsWith('content/')) {
                         if (activeTab === 'content/modules' || activeTab === 'content/lessons' || activeTab === 'content/syllabus') {
-                          return <CourseList key="courses-all-redirect" activeTab="courses/all" setActiveTab={setActiveTab} />;
+                          return <CourseList key="courses-all-redirect" activeTab="courses/all" setActiveTab={handleTabChange} />;
                         }
                         return <CourseMaterials key="courses-materials-redirect" />;
                       }
                       if (activeTab === 'assignments/scheduling') return <ScheduleCalendar />;
                       if (activeTab === 'student/attendance') return isStudent ? (
                         <Attendance initialView="dashboard" />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       if (activeTab.startsWith('attendance/')) return (canManageInstitution || isTeacher) ? (
                         <Attendance initialView={activeTab.replace('attendance/', '')} />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       if (activeTab === 'financials' || activeTab.startsWith('finance/')) {
                         const financeMode = activeTab === 'financials'
                           ? 'payments'
                           : activeTab.replace('finance/', '');
                         if (canManageInstitution) return <Financials initialTab={financeMode} />;
                         if (isStudent && financeMode === 'payments') return <Financials initialTab="payments" />;
-                        return <Dashboard setActiveTab={setActiveTab} />;
+                        return <Dashboard setActiveTab={handleTabChange} />;
                       }
                       if (activeTab === 'student/certificates') return isStudent ? (
                         <Certificates initialView="generate" />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       if (activeTab.startsWith('reports/')) return canManageInstitution ? (
                         <Reports initialView={activeTab.replace('reports/', '')} />
                       ) : isTeacher ? (
                         <TeacherReports initialView={activeTab.replace('reports/', '')} />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       if (activeTab.startsWith('teacher/')) return isTeacher ? (
                         <TeacherProfile initialView={activeTab.replace('teacher/', '')} />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       if (activeTab === 'communication/announcements') return <Announcements />;
                       if (activeTab === 'communication/live-classes') return <LiveClasses />;
                       if (activeTab === 'communication/discussions') return <Discussions />;
                       if (activeTab === 'communication/chat' || activeTab === 'communication/email' || activeTab === 'communication/sms' || activeTab === 'communication/in-app') return <Messaging />;
                       if (activeTab.startsWith('settings/')) return (canManageInstitution || isTeacher || isStudent) ? (
                         <SystemSettings initialActiveTab={activeTab.replace('settings/', '')} />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       if (activeTab.startsWith('certificates/')) return canManageInstitution ? (
                         <Certificates initialView={activeTab.replace('certificates/', '')} />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       if (activeTab.startsWith('cms/')) return canManageInstitution ? (
                         <ContentManagement initialView={activeTab.replace('cms/', '')} />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       if (activeTab.startsWith('monitoring/')) return canManageInstitution ? (
                         <SystemMonitoring initialView={activeTab.replace('monitoring/', '')} />
-                      ) : <Dashboard setActiveTab={setActiveTab} />;
+                      ) : <Dashboard setActiveTab={handleTabChange} />;
                       // Fallback for all other sidebar routes
                       return <PlaceholderView routeId={activeTab} />;
                     })()}
