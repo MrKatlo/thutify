@@ -104,18 +104,17 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
 
   const fetchDashboardData = async () => {
     if (!profile || !institutionId) return;
+    
+    // We'll fetch stats and essential data first to show something quickly
     setLoading(true);
+    
     try {
       if (profile.role === 'student') {
-        // --- STUDENT DYNAMIC DASHBOARD ---
-        const [enrollments, courses, liveClasses, announcements, payments, assignments, attendanceRecords] = await Promise.all([
+        // Essential student data
+        const [enrollments, courses, payments] = await Promise.all([
           cfApi.listEnrollments(institutionId, undefined, profile.uid),
           cfApi.listCourses(institutionId),
-          cfApi.listLiveClasses(institutionId),
-          cfApi.listAnnouncements(institutionId),
           cfApi.listPayments(institutionId, profile.uid),
-          cfApi.listAssignments(institutionId),
-          cfApi.listAttendanceRecords(institutionId),
         ]);
 
         const activeEnrollments = enrollments.filter((e: any) => e.status === 'active' || !e.status);
@@ -123,56 +122,81 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
         const enrolled = courses.filter((c: any) => activeCourseIds.includes(c.id));
         setEnrolledCoursesList(enrolled);
 
-        const completedCount = Array.isArray(profile.completedLessons) ? profile.completedLessons.length : 0;
-
-        const studentAttendanceRecords = attendanceRecords.filter((record: any) =>
-          (record.student_id === profile.uid || record.studentId === profile.uid)
-        );
-        const attendedCount = studentAttendanceRecords.filter((record: any) => record.status === 'present').length;
-        const attendanceRate = studentAttendanceRecords.length > 0
-          ? Math.round((attendedCount / studentAttendanceRecords.length) * 100)
-          : 0;
-
         const totalPaid = payments.reduce((sum: number, p: any) => sum + (Number(p.amount_paid || p.amountPaid) || 0), 0);
         const totalExpected = enrolled.reduce((sum: number, c: any) => sum + (Number(c.fee) || 0), 0);
         const balance = Math.max(0, totalExpected - totalPaid);
-        const paymentStatus = balance === 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid';
-
-        setStudentStats({
+        
+        setStudentStats(prev => ({
+          ...prev,
           enrolledCount: enrolled.length,
-          completedCount,
-          attendanceRate,
           balance,
-          paymentStatus,
+          paymentStatus: balance === 0 ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid',
+        }));
+
+        // Secondary student data (fetched after primary data is set)
+        Promise.all([
+          cfApi.listLiveClasses(institutionId),
+          cfApi.listAnnouncements(institutionId),
+          cfApi.listAssignments(institutionId),
+          cfApi.listAttendanceRecords(institutionId),
+        ]).then(([liveClasses, announcements, assignments, attendanceRecords]) => {
+          const classes = liveClasses
+            .filter((lc: any) => activeCourseIds.includes(lc.course_id) || lc.course_id === 'all')
+            .slice(0, 3);
+          setUpcomingClasses(classes);
+
+          const anns = announcements.slice(0, 3);
+          setAnnouncements(anns);
+
+          const dueAssignments = assignments
+            .filter((assignment: any) => activeCourseIds.includes(assignment.course_id || assignment.courseId))
+            .map((assignment: any) => ({
+              id: assignment.id,
+              title: assignment.title,
+              courseName: assignment.courseName || assignment.course_name || 'Course',
+              dueDate: assignment.dueDate || assignment.due_date || 'No due date',
+            }))
+            .filter((assignment: any) => assignment.dueDate !== 'No due date')
+            .sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+            .slice(0, 5);
+          setUpcomingAssignments(dueAssignments);
+
+          const studentAttendanceRecords = attendanceRecords.filter((record: any) =>
+            (record.student_id === profile.uid || record.studentId === profile.uid)
+          );
+          const attendedCount = studentAttendanceRecords.filter((record: any) => record.status === 'present').length;
+          const attendanceRate = studentAttendanceRecords.length > 0
+            ? Math.round((attendedCount / studentAttendanceRecords.length) * 100)
+            : 0;
+
+          setStudentStats(prev => ({
+            ...prev,
+            attendanceRate,
+            completedCount: Array.isArray(profile.completedLessons) ? profile.completedLessons.length : 0,
+          }));
         });
 
-        const classes = liveClasses
-          .filter((lc: any) => activeCourseIds.includes(lc.course_id) || lc.course_id === 'all')
-          .slice(0, 3);
-        setUpcomingClasses(classes);
-
-        const dueAssignments = assignments
-          .filter((assignment: any) => activeCourseIds.includes(assignment.course_id || assignment.courseId))
-          .map((assignment: any) => ({
-            id: assignment.id,
-            title: assignment.title,
-            courseName: assignment.courseName || assignment.course_name || 'Course',
-            dueDate: assignment.dueDate || assignment.due_date || 'No due date',
-          }))
-          .filter((assignment: any) => assignment.dueDate !== 'No due date')
-          .sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
-          .slice(0, 5);
-        setUpcomingAssignments(dueAssignments);
-
-        const anns = announcements.slice(0, 3);
-        setAnnouncements(anns);
-
-        setRecentActivities([
-          { type: 'course', title: 'Course progress synced', meta: `${completedCount} lessons completed so far`, date: 'Today' },
+      } else {
+        // Essential owner/teacher data
+        const [dashStats, courses] = await Promise.all([
+          cfApi.getDashboardStats(institutionId),
+          cfApi.listCourses(institutionId),
         ]);
 
-      } else {
-        // --- OWNER & TEACHER DASHBOARD ---
+        setStats({
+          studentsCount: dashStats.students_count || 0,
+          teachersCount: dashStats.teachers_count || 0,
+          coursesCount: dashStats.courses_count || 0,
+          totalRevenue: dashStats.total_revenue || 0,
+          unpaidCount: dashStats.unpaid_count || 0
+        });
+
+        const myCourses = isTeacher && !canManageInstitution
+          ? courses
+          : courses.filter((c: any) => c.teacher_id === profile.uid || c.author_id === profile.uid);
+        setTeacherCourses(myCourses);
+
+        // Secondary owner/teacher data
         const ownerFetches = canManageInstitution
           ? [
               cfApi.listAuditLog(institutionId, { limit: 10 }),
@@ -183,121 +207,95 @@ export function Dashboard({ setActiveTab, initialView = 'overview' }: DashboardP
             ]
           : [Promise.resolve([]), Promise.resolve({ results: [], total: 0, limit: 0, offset: 0 })];
 
-        const [dashStats, courses, liveClasses, announcements, enrollments, auditLog, studentsPage] =
-          await Promise.all([
-            cfApi.getDashboardStats(institutionId),
-            cfApi.listCourses(institutionId),
-            cfApi.listLiveClasses(institutionId),
-            cfApi.listAnnouncements(institutionId),
-            cfApi.listEnrollments(institutionId),
-            ownerFetches[0] as Promise<AuditLogEntry[]>,
-            ownerFetches[1] as Promise<{ results: StudentSummary[] }>,
-          ]);
+        Promise.all([
+          cfApi.listLiveClasses(institutionId),
+          cfApi.listAnnouncements(institutionId),
+          cfApi.listEnrollments(institutionId),
+          ...ownerFetches
+        ]).then(async ([liveClasses, announcements, enrollments, auditLog, studentsPage]) => {
+          if (canManageInstitution) {
+            const auditEntries = auditLog as AuditLogEntry[];
+            setRecentActivities(
+              auditEntries.length > 0 ? auditEntries.map(formatAuditActivity) : [],
+            );
+            const studentResults = Array.isArray(studentsPage) ? studentsPage : (studentsPage as any).results;
+            const withBalance = (studentResults || [])
+              .filter((student: any) => Number(student.balance ?? 0) > 0)
+              .sort((a: any, b: any) => Number(b.balance ?? 0) - Number(a.balance ?? 0))
+              .slice(0, 5);
+            setUnpaidStudents(withBalance);
+          }
 
-        setStats({
-          studentsCount: dashStats.students_count || 0,
-          teachersCount: dashStats.teachers_count || 0,
-          coursesCount: dashStats.courses_count || 0,
-          totalRevenue: dashStats.total_revenue || 0,
-          unpaidCount: dashStats.unpaid_count || 0
+          const myCoursesIds = myCourses.map((c: any) => c.id);
+          let myStudentsCount = 0;
+          if (myCoursesIds.length > 0) {
+            const myEnrollments = enrollments.filter((e: any) => myCoursesIds.includes(e.course_id || e.courseId));
+            myStudentsCount = Array.from(new Set(myEnrollments.map((e: any) => e.student_id || e.studentId))).length;
+          }
+
+          setTeacherStats(prev => ({
+            ...prev,
+            coursesCount: myCourses.length,
+            studentsCount: myStudentsCount,
+          }));
+
+          const classes = (isTeacher && !canManageInstitution
+            ? liveClasses.filter((lc: any) => lc.teacher_id === profile.uid)
+            : liveClasses
+          ).slice(0, 3);
+          setUpcomingClasses(classes);
+          setAnnouncements(announcements.slice(0, 3));
+
+          // Heavy lifting for teachers
+          if (isTeacher && !canManageInstitution) {
+            const [submissions, timetable, performance] = await Promise.all([
+              cfApi.listSubmissions(institutionId),
+              cfApi.getTimetable(institutionId, profile.uid),
+              cfApi.getMyTeacherPerformance(institutionId).catch(() => null),
+            ]);
+            
+            setPendingSubmissions(
+              submissions.filter((s: any) => s.status === 'pending' || s.status === 'submitted' || s.grade == null)
+            );
+            setScheduleEntries(timetable);
+            
+            const courseEnrollments = enrollments.filter((e: any) => myCoursesIds.includes(e.course_id || e.courseId));
+            const completedEnrollments = courseEnrollments.filter((e: any) => String(e.status || '') === 'completed').length;
+            const enrollmentProgress = courseEnrollments.length > 0
+              ? Math.round((completedEnrollments / courseEnrollments.length) * 100)
+              : 0;
+            
+            const assignments = await cfApi.listAssignments(institutionId);
+            const myAssignmentIds = new Set(
+              assignments
+                .filter((a: any) => myCoursesIds.includes(a.course_id || a.courseId))
+                .map((a: any) => a.id)
+            );
+            const mySubmissions = submissions.filter((s: any) => myAssignmentIds.has(s.assignment_id || s.assignmentId));
+            const gradedSubmissions = mySubmissions.filter((s: any) => s.status === 'graded' || s.grade != null).length;
+            const submissionProgress = mySubmissions.length > 0
+              ? Math.round((gradedSubmissions / mySubmissions.length) * 100)
+              : 0;
+
+            const lessonLists = await Promise.all(
+              myCoursesIds.slice(0, 5).map(async (courseId: string) => {
+                const modules = await cfApi.listModules(courseId);
+                const perModule = await Promise.all(modules.map((m) => cfApi.listLessons(m.id)));
+                return perModule.reduce((sum, lessons) => sum + lessons.length, 0);
+              }),
+            );
+            const myLessonsCount = lessonLists.reduce((sum, count) => sum + count, 0);
+
+            setTeacherStats(prev => ({
+              ...prev,
+              lessonsCount: myLessonsCount,
+              avgProgress: performance?.courseCompletionRate ?? Math.round((enrollmentProgress + submissionProgress) / 2),
+            }));
+          }
         });
-
-        if (canManageInstitution) {
-          const auditEntries = auditLog as AuditLogEntry[];
-          setRecentActivities(
-            auditEntries.length > 0 ? auditEntries.map(formatAuditActivity) : [],
-          );
-          const withBalance = (studentsPage.results || [])
-            .filter((student) => Number(student.balance ?? 0) > 0)
-            .sort((a, b) => Number(b.balance ?? 0) - Number(a.balance ?? 0))
-            .slice(0, 5);
-          setUnpaidStudents(withBalance);
-        }
-
-        const myCourses = isTeacher && !canManageInstitution
-          ? courses
-          : courses.filter((c: any) => c.teacher_id === profile.uid || c.author_id === profile.uid);
-        const myCoursesIds = myCourses.map((c: any) => c.id);
-        setTeacherCourses(myCourses);
-
-        let myStudentsCount = 0;
-        if (myCoursesIds.length > 0) {
-          const myEnrollments = enrollments.filter((e: any) => myCoursesIds.includes(e.course_id || e.courseId));
-          myStudentsCount = Array.from(new Set(myEnrollments.map((e: any) => e.student_id || e.studentId))).length;
-        }
-
-        let myLessonsCount = 0;
-        if (isTeacher && myCoursesIds.length > 0) {
-          const lessonLists = await Promise.all(
-            myCoursesIds.slice(0, 5).map(async (courseId: string) => {
-              const modules = await cfApi.listModules(courseId);
-              const perModule = await Promise.all(modules.map((m) => cfApi.listLessons(m.id)));
-              return perModule.reduce((sum, lessons) => sum + lessons.length, 0);
-            }),
-          );
-          myLessonsCount = lessonLists.reduce((sum, count) => sum + count, 0);
-        }
-
-        let avgProgress = 0;
-        if (isTeacher && !canManageInstitution) {
-          const [submissions, timetable, performance] = await Promise.all([
-            cfApi.listSubmissions(institutionId),
-            cfApi.getTimetable(institutionId, profile.uid),
-            cfApi.getMyTeacherPerformance(institutionId).catch(() => null),
-          ]);
-          setPendingSubmissions(
-            submissions.filter(
-              (submission: any) =>
-                submission.status === 'pending' || submission.status === 'submitted' || submission.grade == null,
-            ),
-          );
-          setScheduleEntries(timetable);
-
-          const courseEnrollments = enrollments.filter((e: any) => myCoursesIds.includes(e.course_id || e.courseId));
-          const completedEnrollments = courseEnrollments.filter((e: any) => String(e.status || '') === 'completed').length;
-          const enrollmentProgress = courseEnrollments.length > 0
-            ? Math.round((completedEnrollments / courseEnrollments.length) * 100)
-            : 0;
-          const myAssignmentIds = new Set(
-            (await cfApi.listAssignments(institutionId))
-              .filter((a: any) => myCoursesIds.includes(a.course_id || a.courseId))
-              .map((a: any) => a.id),
-          );
-          const mySubmissions = submissions.filter((s: any) => myAssignmentIds.has(s.assignment_id || s.assignmentId));
-          const gradedSubmissions = mySubmissions.filter((s: any) => s.status === 'graded' || s.grade != null).length;
-          const submissionProgress = mySubmissions.length > 0
-            ? Math.round((gradedSubmissions / mySubmissions.length) * 100)
-            : 0;
-          avgProgress = performance?.courseCompletionRate ?? Math.round((enrollmentProgress + submissionProgress) / 2);
-        }
-
-        setTeacherStats({
-          coursesCount: myCourses.length,
-          studentsCount: myStudentsCount,
-          lessonsCount: myLessonsCount,
-          avgProgress,
-        });
-
-        const classes = (isTeacher && !canManageInstitution
-          ? liveClasses.filter((lc: any) => lc.teacher_id === profile.uid)
-          : liveClasses
-        ).slice(0, 3);
-        setUpcomingClasses(classes);
-
-        // Announcements
-        const anns = announcements.slice(0, 3);
-        setAnnouncements(anns);
-
-        if (!canManageInstitution) {
-          setRecentActivities([]);
-        }
       }
     } catch (err) {
       console.warn("Dashboard fetch failed:", err);
-      if (canManageInstitution) {
-        setRecentActivities([]);
-        setUnpaidStudents([]);
-      }
     } finally {
       setLoading(false);
     }

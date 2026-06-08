@@ -74,6 +74,10 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
 
   const fetchData = async () => {
     if (!institutionId) return;
+    
+    // Prevent multiple concurrent fetches
+    if (loading && courses.length > 0) return;
+    
     setLoading(true);
     try {
       const [fetchedCourses, fetchedTeachers] = await Promise.all([

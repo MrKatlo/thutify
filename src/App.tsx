@@ -65,15 +65,15 @@ export default function App() {
 
   // Sync activeTab with URL tab param
   useEffect(() => {
-    if (route.name === 'institution-admin' && route.params.tab) {
-      setActiveTab(route.params.tab);
-    } else if (route.name === 'institution-admin' && !route.params.tab) {
-      setActiveTab('dashboard');
+    const tabFromUrl = route.params.tab || 'dashboard';
+    if (route.name === 'institution-admin' && activeTab !== tabFromUrl) {
+      setActiveTab(tabFromUrl);
     }
-  }, [route.params.tab, route.name]);
+  }, [route.params.tab, route.name, activeTab]);
 
   // Wrap setActiveTab to also navigate
   const handleTabChange = (tab: string) => {
+    if (activeTab === tab) return; // Prevent double trigger
     setActiveTab(tab);
     if (route.name === 'institution-admin' && activeInstitution) {
       const role = route.params.role || (isStudent ? 'student' : isTeacher ? 'teacher' : 'admin');

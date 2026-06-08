@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { onIdTokenChanged, type User } from 'firebase/auth';
 import { auth, logout as firebaseLogout } from '../lib/firebase';
 import * as cfApi from '../services/cfApi';
@@ -162,7 +162,7 @@ export function useAuth(activeInstitutionId?: string | null) {
     };
   }, [currentInstitutionId]);
 
-  return {
+  return useMemo(() => ({
     user,
     platformUser,
     institutionUser,
@@ -184,5 +184,5 @@ export function useAuth(activeInstitutionId?: string | null) {
     isStudent: profile?.role === 'student',
     isPlatformAdmin: profile?.isPlatformAdmin === true,
     institutionId: currentInstitutionId,
-  };
+  }), [user, platformUser, institutionUser, profile, institution, loading, error, currentInstitutionId]);
 }

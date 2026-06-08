@@ -51,12 +51,15 @@ export function CourseMaterials() {
           list = (list || []).filter((c: any) => (c.teacher_id || c.teacherId) === profile.uid);
         }
         setCourses(list || []);
-        if (list?.length) setSelectedCourseId(list[0].id);
+        // Only set if not already set to avoid double trigger
+        if (list?.length && !selectedCourseId) {
+          setSelectedCourseId(list[0].id);
+        }
       } catch (err) {
         console.error('Fetch courses failed:', err);
       }
     })();
-  }, [institutionId]);
+  }, [institutionId, isTeacher, canManageInstitution, profile?.uid]);
 
   useEffect(() => {
     if (!selectedCourseId || scope !== 'course') {
@@ -78,6 +81,9 @@ export function CourseMaterials() {
 
   const refreshMaterials = async () => {
     if (!institutionId) return;
+    // Guard: if in course scope, wait for a course selection
+    if (scope === 'course' && !selectedCourseId) return;
+    
     setLoading(true);
     try {
       if (scope === 'course' && selectedCourseId) {
