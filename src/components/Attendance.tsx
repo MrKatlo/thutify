@@ -183,24 +183,37 @@ export function Attendance({ initialView = 'dashboard' }: AttendanceProps) {
     }
   };
 
-  const handleMarkStatus = async (studentId: string, nextStatus: 'present' | 'absent' | 'late') => {
+  const handleMarkStatus = async (studentId: string, status: string) => {
+    if (!institutionId || !selectedCourseId) return;
     try {
-      if (!institutionId || !selectedCourseId) return;
-      await cfApi.markAttendance(institutionId, selectedCourseId, studentId, nextStatus);
-      setAttendanceRecords((prev) => {
-        const idx = prev.findIndex((r) => r.student_id === studentId || r.studentId === studentId);
-        if (idx > -1) {
-          const next = [...prev];
-          next[idx] = { ...next[idx], status: nextStatus, marked_at: new Date().toISOString() };
-          return next;
-        }
-        return [...prev, { student_id: studentId, status: nextStatus, marked_at: new Date().toISOString() } as AttendanceRecord];
+      await cfApi.markAttendance(institutionId, {
+        courseId: selectedCourseId,
+        studentId,
+        status,
       });
-      showToast('Attendance marked successfully.', 'success');
+      showToast(`Attendance marked as ${status}.`, 'success');
+      fetchStudentsAndAttendance();
       fetchAttendanceHistory();
     } catch (err) {
       console.error('Failed to mark attendance:', err);
       showToast('Unable to save attendance. Try again.', 'error');
+    }
+  };
+
+  const handleSelfMarkAttendance = async (courseId: string) => {
+    if (!institutionId || !profile?.uid) return;
+    try {
+      await cfApi.markAttendance(institutionId, {
+        courseId,
+        studentId: profile.uid,
+        status: 'present',
+      });
+      showToast('Attendance marked successfully!', 'success');
+      fetchAttendanceHistory();
+      fetchStudentsAndAttendance();
+    } catch (err) {
+      console.error('Failed to mark attendance:', err);
+      showToast('Failed to mark attendance. You might have already marked it today.', 'error');
     }
   };
 
@@ -233,12 +246,62 @@ export function Attendance({ initialView = 'dashboard' }: AttendanceProps) {
   if (profile?.role === 'student') {
     return (
       <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Attendance Report</h1>
-          <p className="text-gray-500 mt-1 font-medium text-sm">Monitor your presence and overall punctuality.</p>
+        {toast && (
+          <div className={`fixed top-4 right-4 z-50 rounded-2xl p-4 shadow-lg text-sm font-medium ${
+            toast.type === 'success'
+              ? 'bg-emerald-50 text-emerald-700'
+              : toast.type === 'warning'
+              ? 'bg-yellow-50 text-yellow-700'
+              : 'bg-red-50 text-red-700'
+          }`}>
+            {toast.message}
+          </div>
+        )}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Attendance</h1>
+            <p className="text-gray-500 mt-1 font-medium text-sm">Monitor your presence and mark yourself for today's classes.</p>
+          </div>
         </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 space-y-6">
+            <Card title="Mark Presence">
+              <div className="space-y-4 mt-4">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Your Enrolled Courses</p>
+                {courses.length === 0 ? (
+                  <p className="text-sm text-gray-500 italic">No enrolled courses found.</p>
+                ) : (
+                  courses.map((course) => {
+                    const isMarked = attendanceRecords.some(r => 
+                      (r.student_id === profile.uid || r.studentId === profile.uid) && 
+                      (r.course_id === course.id || r.courseId === course.id) &&
+                      String(r.created_at || r.marked_at || '').slice(0, 10) === selectedDate
+                    );
+
+                    return (
+                      <div key={course.id} className="p-4 rounded-2xl border border-gray-100 bg-white flex items-center justify-between">
+                        <div>
+                          <p className="font-bold text-sm text-gray-900">{course.course_name || course.title}</p>
+                          <p className="text-xs text-gray-400">{isMarked ? '✓ Marked for today' : 'Not marked today'}</p>
+                        </div>
+                        <button
+                          disabled={isMarked}
+                          onClick={() => handleSelfMarkAttendance(course.id)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                            isMarked 
+                              ? 'bg-emerald-50 text-emerald-600 cursor-default' 
+                              : 'bg-black text-white hover:scale-105 active:scale-95'
+                          }`}
+                        >
+                          {isMarked ? 'Present' : 'Mark Present'}
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </Card>
             <AttendanceAnalytics stats={stats} selectedCourseName="Overall" />
           </div>
           <div className="lg:col-span-2">

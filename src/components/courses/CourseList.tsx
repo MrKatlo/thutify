@@ -62,6 +62,18 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
   const resolvedTab = activeTab || 'courses/all';
   const isCreateView = resolvedTab === 'courses/create';
 
+  useEffect(() => {
+    if (resolvedTab.startsWith('courses/view/')) {
+      const courseId = resolvedTab.replace('courses/view/', '');
+      if (courseId && courses.length > 0) {
+        const course = courses.find(c => c.id === courseId);
+        if (course) {
+          setViewingCourse(course);
+        }
+      }
+    }
+  }, [resolvedTab, courses]);
+
   const canEditCourse = (course: { teacher_id?: string; teacherId?: string }) => {
     if (canManageInstitution) return true;
     if (isTeacher) return (course.teacher_id || course.teacherId) === profile?.uid;
@@ -89,10 +101,10 @@ export function CourseList({ activeTab, setActiveTab }: CourseListProps) {
       
       if (profile?.role === 'student') {
         const enrollments = await cfApi.listEnrollments(institutionId, undefined, profile.uid);
-        const enrolledIds = enrollments.map((e: any) => e.course_id);
-        setCourses(fetchedCourses.filter((c: any) => enrolledIds.includes(c.id)));
+        const enrolledIds = new Set(enrollments.map((e: any) => e.course_id || e.courseId));
+        setCourses((fetchedCourses || []).filter((c: any) => enrolledIds.has(c.id)));
       } else {
-        setCourses(fetchedCourses);
+        setCourses(fetchedCourses || []);
       }
     } catch (error) {
       console.error("Fetch courses failed:", error);

@@ -142,7 +142,7 @@ export function StudentDashboard({ setActiveTab }: { setActiveTab: (t: string) =
                         </div>
                       </div>
                       <button
-                        onClick={() => setActiveTab('courses/all')}
+                        onClick={() => setActiveTab(`courses/view/${course.id}`)}
                         className="p-2 bg-gray-50 text-gray-400 rounded-xl hover:bg-black hover:text-white transition-all shadow-sm"
                       >
                         <ChevronRight className="w-5 h-5" />
@@ -174,7 +174,15 @@ export function StudentDashboard({ setActiveTab }: { setActiveTab: (t: string) =
                   <p className="text-xl font-black text-gray-900">{completedLessons}</p>
                 </div>
                 <div className="p-4 bg-white rounded-2xl border border-gray-100 col-span-2">
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Avg. progress</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Avg. progress</p>
+                    <button 
+                      onClick={() => setActiveTab('attendance/dashboard')}
+                      className="text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:underline"
+                    >
+                      Mark Attendance
+                    </button>
+                  </div>
                   <p className="text-xl font-black text-gray-900">
                     {averageProgress !== null ? `${averageProgress}%` : '—'}
                   </p>

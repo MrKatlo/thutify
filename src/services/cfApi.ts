@@ -683,12 +683,20 @@ export async function listAssignments(
   courseId?: string,
   pagination?: PaginationParams,
 ): Promise<Assignment[]> {
-  return apiRequest('GET', `/institutions/${institutionId}/assignments`, {
+  const list = await apiRequest<any[]>('GET', `/institutions/${institutionId}/assignments`, {
     query: {
       course_id: courseId,
       ...paginationQuery(pagination),
     },
   });
+  return (list || []).map(a => ({
+    ...a,
+    courseName: a.courseName || a.course_name,
+    dueDate: a.dueDate || a.due_date,
+    fileUrl: a.fileUrl || a.file_url,
+    teacherId: a.teacherId || a.teacher_id,
+    teacherName: a.teacherName || a.teacher_name,
+  }));
 }
 
 export async function createAssignment(institutionId: string, data: AssignmentInput): Promise<Assignment> {
@@ -719,13 +727,21 @@ export async function listSubmissions(
   studentId?: string,
   pagination?: PaginationParams,
 ): Promise<Submission[]> {
-  return apiRequest('GET', `/institutions/${institutionId}/submissions`, {
+  const list = await apiRequest<any[]>('GET', `/institutions/${institutionId}/submissions`, {
     query: {
       assignment_id: assignmentId,
       student_id: studentId,
       ...paginationQuery(pagination),
     },
   });
+  return (list || []).map(s => ({
+    ...s,
+    assignmentTitle: s.assignmentTitle || s.assignment_title,
+    studentId: s.studentId || s.student_id,
+    studentName: s.studentName || s.student_name,
+    submittedAt: s.submittedAt || s.submitted_at,
+    fileUrl: s.fileUrl || s.file_url,
+  }));
 }
 
 export async function submitAssignment(
@@ -746,9 +762,16 @@ export async function gradeSubmission(id: string, grade: number, feedback?: stri
 }
 
 export async function listQuizzes(institutionId: string, pagination?: PaginationParams): Promise<Quiz[]> {
-  return apiRequest('GET', `/institutions/${institutionId}/quizzes`, {
+  const list = await apiRequest<any[]>('GET', `/institutions/${institutionId}/quizzes`, {
     query: paginationQuery(pagination),
   });
+  return (list || []).map(q => ({
+    ...q,
+    courseName: q.courseName || q.course_name,
+    teacherId: q.teacherId || q.teacher_id,
+    teacherName: q.teacherName || q.teacher_name,
+    timeLimit: q.timeLimit || q.time_limit || q.time_limit_minutes,
+  }));
 }
 
 export async function createQuiz(institutionId: string, data: QuizInput): Promise<Quiz> {
@@ -772,12 +795,20 @@ export async function listQuizAttempts(
   studentId?: string,
   pagination?: PaginationParams,
 ): Promise<QuizAttempt[]> {
-  return apiRequest('GET', `/institutions/${institutionId}/quiz-attempts`, {
+  const list = await apiRequest<any[]>('GET', `/institutions/${institutionId}/quiz-attempts`, {
     query: {
       student_id: studentId,
       ...paginationQuery(pagination),
     },
   });
+  return (list || []).map(qa => ({
+    ...qa,
+    quizTitle: qa.quizTitle || qa.quiz_title,
+    studentId: qa.studentId || qa.student_id,
+    studentName: qa.studentName || qa.student_name,
+    courseName: qa.courseName || qa.course_name,
+    submittedAt: qa.submittedAt || qa.submitted_at,
+  }));
 }
 
 export async function submitQuizAttempt(
@@ -831,12 +862,10 @@ export async function listAttendanceRecords(institutionId: string): Promise<Atte
 
 export async function markAttendance(
   institutionId: string,
-  courseId: string,
-  studentId: string,
-  status: string,
+  data: { courseId: string; studentId: string; status: string },
 ): Promise<AttendanceRecord[]> {
   return apiRequest('POST', `/institutions/${institutionId}/attendance/records`, {
-    body: { courseId, studentId, status },
+    body: data,
   });
 }
 

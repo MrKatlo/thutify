@@ -88,12 +88,12 @@ const MENU_DATA: MenuGroup[] = [
     ]
   },
   {
-    id: 'attendance', label: 'Attendance', icon: CalendarCheck, roles: ['owner', 'teacher'],
+    id: 'attendance', label: 'Attendance', icon: CalendarCheck, roles: ['owner', 'teacher', 'student'],
     items: [
       { id: 'attendance/dashboard', label: 'Attendance Dashboard' },
-      { id: 'attendance/record', label: 'Record Attendance' },
+      { id: 'attendance/record', label: 'Record Attendance', roles: ['owner', 'teacher'] },
       { id: 'attendance/reports', label: 'Attendance Reports' },
-      { id: 'attendance/late', label: 'Late Attendance Tracking' },
+      { id: 'attendance/late', label: 'Late Attendance Tracking', roles: ['owner', 'teacher'] },
     ]
   },
   {

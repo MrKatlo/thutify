@@ -5996,13 +5996,25 @@ export function createApp(options: CreateAppOptions = {}) {
     const verified = context.get('user');
     const platformUser = context.get('platformUser');
     const institutionId = context.req.param('id');
-    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin', 'teacher']);
+    const access = await requireMembership(context.env.DB, platformUser, verified, institutionId, ['owner', 'admin', 'teacher', 'student']);
     if (access.error) return access.error;
+    
     const body = await parseRequestBody<{ courseId?: string; course_id?: string; studentId?: string; student_id?: string; status?: string }>(context.req.raw);
     const courseId = String(body.courseId || body.course_id || '').trim();
     const studentId = String(body.studentId || body.student_id || '').trim();
+    
     if (!courseId || !studentId || !body.status) {
       return context.json({ error: 'courseId, studentId, and status are required' }, 400);
+    }
+
+    // Security: Students can only mark themselves as present
+    if (access.membership?.role === 'student') {
+      if (studentId !== verified.uid) {
+        return context.json({ error: 'Forbidden' }, 403);
+      }
+      if (body.status !== 'present') {
+        return context.json({ error: 'Students can only mark themselves as present' }, 400);
+      }
     }
 
     const today = new Date().toISOString().slice(0, 10);
