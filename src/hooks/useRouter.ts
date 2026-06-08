@@ -63,24 +63,41 @@ export function parsePath(path: string): RouteInfo {
     return { name: staticRoutes[cleanPath], params: {} };
   }
   
-  // Pattern: /:slug/sub-route
+  // Pattern: /:slug/sub-route/tab
   const parts = cleanPath.split('/').filter(Boolean);
-  if (parts.length === 2) {
-    const [slug, subRoute] = parts;
+  
+  if (parts.length >= 2) {
+    const [slug, subRoute, ...rest] = parts;
+    
     if (subRoute === 'login') {
       return { name: 'institution-login', params: { institutionSlug: slug } };
-    }
-
-    const normalizedRole = subRoute === 'owner' ? 'admin' : subRoute;
-    if (['admin', 'teacher', 'student'].includes(normalizedRole)) {
-      return { name: 'institution-admin', params: { institutionSlug: slug, role: normalizedRole } };
     }
 
     if (subRoute === 'student-signup') {
       return { name: 'student-signup', params: { institutionSlug: slug } };
     }
+
+    const normalizedRole = subRoute === 'owner' ? 'admin' : subRoute;
+    if (['admin', 'teacher', 'student'].includes(normalizedRole)) {
+      return { 
+        name: 'institution-admin', 
+        params: { 
+          institutionSlug: slug, 
+          role: normalizedRole,
+          tab: rest.join('/') 
+        } 
+      };
+    }
   }
-  
+
+  // Handle root slug /:slug
+  if (parts.length === 1) {
+    const slug = parts[0];
+    if (!['login', 'signup-institution', 'find-institution', 'platform-admin', 'features', 'solutions', 'pricing', 'documentation', 'api-reference', 'help-center', 'privacy-policy', 'terms-of-service', 'cookie-policy'].includes(slug)) {
+      return { name: 'institution-login', params: { institutionSlug: slug } };
+    }
+  }
+
   return { name: 'not-found', params: {} };
 }
 

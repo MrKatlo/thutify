@@ -48,6 +48,7 @@ import { InstitutionSearchPage } from './components/InstitutionSearchPage';
 import { PlatformAdminDashboard } from './components/PlatformAdminDashboard';
 import { InstitutionLoginPage } from './components/InstitutionLoginPage';
 import { StudentSignupPage } from './components/StudentSignupPage';
+import { StudentDashboard } from './components/student/StudentDashboard';
 import { NotificationBell } from './components/notifications/NotificationBell';
 import { Institution } from './types';
 import * as cfApi from './services/cfApi';
@@ -377,11 +378,15 @@ export default function App() {
                     className="min-h-full"
                   >
                     {(() => {
-                      if (activeTab.startsWith('dashboard')) return (
-                        <Dashboard
-                          setActiveTab={handleTabChange}
-                          initialView={activeTab === 'dashboard' ? 'overview' : activeTab.replace('dashboard/', '')}
-                        />
+                      if (activeTab === 'dashboard' || activeTab.startsWith('dashboard/')) return (
+                        isStudent ? (
+                          <StudentDashboard setActiveTab={handleTabChange} />
+                        ) : (
+                          <Dashboard
+                            setActiveTab={handleTabChange}
+                            initialView={activeTab === 'dashboard' ? 'overview' : activeTab.replace('dashboard/', '')}
+                          />
+                        )
                       );
                       if (activeTab === 'students' || activeTab.startsWith('students/')) return (canManageInstitution || isTeacher) ? (
                         <StudentManagement activeTab={activeTab === 'students' ? 'students/all' : activeTab} />
